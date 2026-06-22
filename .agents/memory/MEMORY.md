@@ -1,0 +1,1 @@
+- [Agency CRM stack decisions](agency-crm-stack.md) — key gotchas: numeric DB fields need parseFloat, zod must be direct dep in api-server, previews served as raw HTML from Express (not SPA)

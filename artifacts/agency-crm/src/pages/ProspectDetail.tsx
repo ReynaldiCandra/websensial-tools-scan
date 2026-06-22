@@ -16,7 +16,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Phone, MapPin, Globe, User, Clock, ArrowLeft, MessageSquare, Plus, FileText, CheckCircle2 } from "lucide-react";
+import { Phone, MapPin, Globe, User, Clock, ArrowLeft, MessageSquare, FileText, Wand2 } from "lucide-react";
+import { PreviewGenerator } from "@/components/PreviewGenerator";
 import { Link } from "wouter";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -171,29 +172,53 @@ export function ProspectDetail() {
               <CardTitle>Outreach</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex gap-4 items-end">
-                <div className="flex-1 space-y-2">
-                  <label className="text-sm font-medium">Select WA Template</label>
-                  <Select value={selectedTemplate?.toString()} onValueChange={(v) => setSelectedTemplate(parseInt(v, 10))}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Choose a template..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {templates?.map(t => (
-                        <SelectItem key={t.id} value={t.id.toString()}>{t.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button 
-                  onClick={handleSendWA} 
-                  disabled={!selectedTemplate || renderTemplate.isPending}
-                  className="bg-[#25D366] hover:bg-[#128C7E] text-white gap-2"
-                >
-                  <MessageSquare className="h-4 w-4" />
-                  Kirim WA
-                </Button>
-              </div>
+              <Tabs defaultValue="wa">
+                <TabsList className="mb-4">
+                  <TabsTrigger value="wa" className="gap-1.5">
+                    <MessageSquare className="h-3.5 w-3.5" />
+                    Kirim WA
+                  </TabsTrigger>
+                  <TabsTrigger value="preview" className="gap-1.5">
+                    <Wand2 className="h-3.5 w-3.5" />
+                    Preview Website
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="wa">
+                  <div className="flex gap-4 items-end">
+                    <div className="flex-1 space-y-2">
+                      <label className="text-sm font-medium">Select WA Template</label>
+                      <Select value={selectedTemplate?.toString()} onValueChange={(v) => setSelectedTemplate(parseInt(v, 10))}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Choose a template..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {templates?.map(t => (
+                            <SelectItem key={t.id} value={t.id.toString()}>{t.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button 
+                      onClick={handleSendWA} 
+                      disabled={!selectedTemplate || renderTemplate.isPending}
+                      className="bg-[#25D366] hover:bg-[#128C7E] text-white gap-2"
+                    >
+                      <MessageSquare className="h-4 w-4" />
+                      Kirim WA
+                    </Button>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="preview">
+                  <PreviewGenerator
+                    prospectId={prospectId}
+                    businessName={prospect.businessName}
+                    category={prospect.category}
+                    phone={prospect.phone}
+                  />
+                </TabsContent>
+              </Tabs>
             </CardContent>
           </Card>
         </div>

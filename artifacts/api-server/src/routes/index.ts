@@ -7,6 +7,7 @@ import templatesRouter from "./templates";
 import invoicesRouter from "./invoices";
 import packagesRouter from "./packages";
 import prospectingRouter from "./prospecting";
+import previewsRouter from "./previews";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(templatesRouter);
 router.use(invoicesRouter);
 router.use(packagesRouter);
 router.use(prospectingRouter);
+router.use(previewsRouter);
 
 export default router;

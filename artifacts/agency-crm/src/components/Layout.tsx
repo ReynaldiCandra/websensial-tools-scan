@@ -7,13 +7,15 @@ import {
   FileText, 
   Package, 
   Settings,
-  Menu
+  Menu,
+  MapPin
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/prospecting", label: "Prospecting", icon: MapPin },
   { href: "/prospects", label: "Prospects", icon: Users },
   { href: "/pipeline", label: "Pipeline", icon: KanbanSquare },
   { href: "/templates", label: "WA Templates", icon: MessageSquareText },

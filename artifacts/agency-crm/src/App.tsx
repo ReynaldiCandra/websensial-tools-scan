@@ -13,6 +13,7 @@ import { Templates } from "@/pages/Templates";
 import { Invoices } from "@/pages/Invoices";
 import { Packages } from "@/pages/Packages";
 import { Settings } from "@/pages/Settings";
+import { Prospecting } from "@/pages/Prospecting";
 
 const queryClient = new QueryClient();
 
@@ -21,6 +22,7 @@ function Router() {
     <Layout>
       <Switch>
         <Route path="/" component={Dashboard} />
+        <Route path="/prospecting" component={Prospecting} />
         <Route path="/prospects" component={Prospects} />
         <Route path="/prospects/:id" component={ProspectDetail} />
         <Route path="/pipeline" component={Pipeline} />

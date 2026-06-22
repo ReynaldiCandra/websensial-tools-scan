@@ -3,20 +3,32 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Agency CRM & Prospecting Tool API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: prospects
+    description: Prospect/lead management
+  - name: activities
+    description: Activity log per prospect
+  - name: templates
+    description: WhatsApp message templates
+  - name: invoices
+    description: Invoice management
+  - name: packages
+    description: Service packages & pricing
+  - name: dashboard
+    description: Dashboard summary & analytics
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +36,477 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ── DASHBOARD ──────────────────────────────────────────────
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard summary stats
+      responses:
+        "200":
+          description: Summary stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/pipeline:
+    get:
+      operationId: getDashboardPipeline
+      tags: [dashboard]
+      summary: Prospect counts grouped by pipeline stage
+      responses:
+        "200":
+          description: Pipeline counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineSummary"
+
+  /dashboard/recent-activity:
+    get:
+      operationId: getDashboardRecentActivity
+      tags: [dashboard]
+      summary: Recent activities across all prospects
+      responses:
+        "200":
+          description: Recent activities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityWithProspect"
+
+  # ── PROSPECTS ──────────────────────────────────────────────
+  /prospects:
+    get:
+      operationId: listProspects
+      tags: [prospects]
+      summary: List all prospects
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of prospects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Prospect"
+    post:
+      operationId: createProspect
+      tags: [prospects]
+      summary: Create a new prospect
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProspectInput"
+      responses:
+        "201":
+          description: Created prospect
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Prospect"
+
+  /prospects/{id}:
+    get:
+      operationId: getProspect
+      tags: [prospects]
+      summary: Get a prospect by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Prospect
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Prospect"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateProspect
+      tags: [prospects]
+      summary: Update a prospect
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProspectUpdate"
+      responses:
+        "200":
+          description: Updated prospect
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Prospect"
+    delete:
+      operationId: deleteProspect
+      tags: [prospects]
+      summary: Delete a prospect
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /prospects/{id}/status:
+    patch:
+      operationId: updateProspectStatus
+      tags: [prospects]
+      summary: Move prospect to a new pipeline stage
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StatusUpdate"
+      responses:
+        "200":
+          description: Updated prospect
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Prospect"
+
+  # ── ACTIVITIES ──────────────────────────────────────────────
+  /prospects/{id}/activities:
+    get:
+      operationId: listActivities
+      tags: [activities]
+      summary: List activities for a prospect
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Activities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Activity"
+    post:
+      operationId: createActivity
+      tags: [activities]
+      summary: Log a new activity for a prospect
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivityInput"
+      responses:
+        "201":
+          description: Created activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+
+  # ── TEMPLATES ──────────────────────────────────────────────
+  /templates:
+    get:
+      operationId: listTemplates
+      tags: [templates]
+      summary: List all WA message templates
+      responses:
+        "200":
+          description: Templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Template"
+    post:
+      operationId: createTemplate
+      tags: [templates]
+      summary: Create a new template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TemplateInput"
+      responses:
+        "201":
+          description: Created template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Template"
+
+  /templates/{id}:
+    patch:
+      operationId: updateTemplate
+      tags: [templates]
+      summary: Update a template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TemplateUpdate"
+      responses:
+        "200":
+          description: Updated template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Template"
+    delete:
+      operationId: deleteTemplate
+      tags: [templates]
+      summary: Delete a template
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /templates/{id}/render:
+    post:
+      operationId: renderTemplate
+      tags: [templates]
+      summary: Render a template with prospect data merged in
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TemplateRenderInput"
+      responses:
+        "200":
+          description: Rendered message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RenderedTemplate"
+
+  # ── INVOICES ──────────────────────────────────────────────
+  /invoices:
+    get:
+      operationId: listInvoices
+      tags: [invoices]
+      summary: List all invoices
+      responses:
+        "200":
+          description: Invoices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Invoice"
+    post:
+      operationId: createInvoice
+      tags: [invoices]
+      summary: Create a new invoice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvoiceInput"
+      responses:
+        "201":
+          description: Created invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+
+  /invoices/{id}:
+    get:
+      operationId: getInvoice
+      tags: [invoices]
+      summary: Get an invoice by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+    patch:
+      operationId: updateInvoice
+      tags: [invoices]
+      summary: Update an invoice
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvoiceUpdate"
+      responses:
+        "200":
+          description: Updated invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+    delete:
+      operationId: deleteInvoice
+      tags: [invoices]
+      summary: Delete an invoice
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ── PACKAGES ──────────────────────────────────────────────
+  /packages:
+    get:
+      operationId: listPackages
+      tags: [packages]
+      summary: List all service packages
+      responses:
+        "200":
+          description: Packages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Package"
+    post:
+      operationId: createPackage
+      tags: [packages]
+      summary: Create a service package
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PackageInput"
+      responses:
+        "201":
+          description: Created package
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Package"
+
+  /packages/{id}:
+    patch:
+      operationId: updatePackage
+      tags: [packages]
+      summary: Update a package
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PackageUpdate"
+      responses:
+        "200":
+          description: Updated package
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Package"
+    delete:
+      operationId: deletePackage
+      tags: [packages]
+      summary: Delete a package
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +517,383 @@ components:
       required:
         - status
 
+    # ── DASHBOARD ──────────────────────────────────────────────
+    DashboardSummary:
+      type: object
+      required: [totalProspects, totalDeals, totalRevenue, conversionRate, thisMonthProspects, thisMonthDeals]
+      properties:
+        totalProspects:
+          type: integer
+        totalDeals:
+          type: integer
+        totalRevenue:
+          type: number
+        conversionRate:
+          type: number
+        thisMonthProspects:
+          type: integer
+        thisMonthDeals:
+          type: integer
+
+    PipelineSummary:
+      type: object
+      required: [belumDihubungi, dihubungi, demo, deal, invoice, selesai]
+      properties:
+        belumDihubungi:
+          type: integer
+        dihubungi:
+          type: integer
+        demo:
+          type: integer
+        deal:
+          type: integer
+        invoice:
+          type: integer
+        selesai:
+          type: integer
+
+    ActivityWithProspect:
+      type: object
+      required: [id, prospectId, type, notes, createdAt, prospectName, businessName]
+      properties:
+        id:
+          type: integer
+        prospectId:
+          type: integer
+        type:
+          type: string
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        prospectName:
+          type: string
+        businessName:
+          type: string
+
+    # ── PROSPECT ──────────────────────────────────────────────
+    Prospect:
+      type: object
+      required: [id, businessName, phone, status, category, source, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        businessName:
+          type: string
+        ownerName:
+          type: ["string", "null"]
+        phone:
+          type: string
+        address:
+          type: ["string", "null"]
+        category:
+          type: string
+        source:
+          type: string
+          description: "manual or gmaps"
+        hasWebsite:
+          type: boolean
+        currentWebsite:
+          type: ["string", "null"]
+        status:
+          type: string
+          description: "belum_dihubungi | dihubungi | demo | deal | invoice | selesai"
+        notes:
+          type: ["string", "null"]
+        rating:
+          type: ["number", "null"]
+        mapsUrl:
+          type: ["string", "null"]
+        dealValue:
+          type: ["number", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+
+    ProspectInput:
+      type: object
+      required: [businessName, phone, category]
+      properties:
+        businessName:
+          type: string
+        ownerName:
+          type: string
+        phone:
+          type: string
+        address:
+          type: string
+        category:
+          type: string
+        source:
+          type: string
+          default: "manual"
+        hasWebsite:
+          type: boolean
+          default: false
+        currentWebsite:
+          type: string
+        status:
+          type: string
+          default: "belum_dihubungi"
+        notes:
+          type: string
+        rating:
+          type: number
+        mapsUrl:
+          type: string
+        dealValue:
+          type: number
+
+    ProspectUpdate:
+      type: object
+      properties:
+        businessName:
+          type: string
+        ownerName:
+          type: string
+        phone:
+          type: string
+        address:
+          type: string
+        category:
+          type: string
+        source:
+          type: string
+        hasWebsite:
+          type: boolean
+        currentWebsite:
+          type: string
+        status:
+          type: string
+        notes:
+          type: string
+        rating:
+          type: number
+        mapsUrl:
+          type: string
+        dealValue:
+          type: number
+
+    StatusUpdate:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+
+    # ── ACTIVITY ──────────────────────────────────────────────
+    Activity:
+      type: object
+      required: [id, prospectId, type, createdAt]
+      properties:
+        id:
+          type: integer
+        prospectId:
+          type: integer
+        type:
+          type: string
+          description: "wa_sent | call | demo | follow_up | proposal | deal_closed | invoice_sent"
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    ActivityInput:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+        notes:
+          type: string
+
+    # ── TEMPLATE ──────────────────────────────────────────────
+    Template:
+      type: object
+      required: [id, name, content, type, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        content:
+          type: string
+        type:
+          type: string
+          description: "initial | follow_up | demo | proposal | closing"
+        createdAt:
+          type: string
+
+    TemplateInput:
+      type: object
+      required: [name, content, type]
+      properties:
+        name:
+          type: string
+        content:
+          type: string
+        type:
+          type: string
+
+    TemplateUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        content:
+          type: string
+        type:
+          type: string
+
+    TemplateRenderInput:
+      type: object
+      required: [prospectId]
+      properties:
+        prospectId:
+          type: integer
+
+    RenderedTemplate:
+      type: object
+      required: [message, waUrl]
+      properties:
+        message:
+          type: string
+        waUrl:
+          type: string
+
+    # ── INVOICE ──────────────────────────────────────────────
+    Invoice:
+      type: object
+      required: [id, prospectId, invoiceNumber, items, subtotal, total, status, createdAt]
+      properties:
+        id:
+          type: integer
+        prospectId:
+          type: integer
+        prospectName:
+          type: ["string", "null"]
+        invoiceNumber:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InvoiceItem"
+        subtotal:
+          type: number
+        discount:
+          type: number
+        total:
+          type: number
+        status:
+          type: string
+          description: "draft | sent | paid | cancelled"
+        notes:
+          type: ["string", "null"]
+        dueDate:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+
+    InvoiceItem:
+      type: object
+      required: [description, qty, price, amount]
+      properties:
+        description:
+          type: string
+        qty:
+          type: integer
+        price:
+          type: number
+        amount:
+          type: number
+
+    InvoiceInput:
+      type: object
+      required: [prospectId, items]
+      properties:
+        prospectId:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InvoiceItem"
+        discount:
+          type: number
+        notes:
+          type: string
+        dueDate:
+          type: string
+        status:
+          type: string
+
+    InvoiceUpdate:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InvoiceItem"
+        discount:
+          type: number
+        notes:
+          type: string
+        dueDate:
+          type: string
+        status:
+          type: string
+
+    # ── PACKAGE ──────────────────────────────────────────────
+    Package:
+      type: object
+      required: [id, name, price, features, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: ["string", "null"]
+        price:
+          type: number
+        features:
+          type: array
+          items:
+            type: string
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+
+    PackageInput:
+      type: object
+      required: [name, price, features]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        features:
+          type: array
+          items:
+            type: string
+        isActive:
+          type: boolean
+
+    PackageUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        price:
+          type: number
+        features:
+          type: array
+          items:
+            type: string
+        isActive:
+          type: boolean

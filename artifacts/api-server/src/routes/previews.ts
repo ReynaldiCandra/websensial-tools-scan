@@ -251,7 +251,7 @@ function generatePreviewHTML(data: {
 <body>
 
 <div class="demo-banner">
-  Ini adalah preview website untuk <strong>${data.businessName}</strong> — dibuat oleh WebAgency Indonesia &nbsp;·&nbsp;
+  Ini adalah preview website untuk <strong>${data.businessName}</strong> — dibuat oleh <strong>Websensial</strong> &nbsp;·&nbsp;
   <a href="https://wa.me/6281234567890?text=Saya+ingin+website+seperti+ini" target="_blank">Hubungi kami</a>
 </div>
 
@@ -319,7 +319,7 @@ function generatePreviewHTML(data: {
 
 <footer>
   <p>&copy; ${new Date().getFullYear()} <strong>${data.businessName}</strong> · ${data.category}</p>
-  <p style="margin-top:6px">Website ini dibuat oleh <strong>WebAgency Indonesia</strong> · <a href="https://wa.me/6281234567890" style="color:#a5b4fc">Ingin website seperti ini? Hubungi kami!</a></p>
+  <p style="margin-top:6px">Website ini dibuat oleh <strong>Websensial</strong> · <a href="https://wa.me/6281234567890" style="color:#a5b4fc">Ingin website seperti ini? Hubungi kami!</a></p>
 </footer>
 
 </body>

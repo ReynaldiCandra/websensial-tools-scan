@@ -29,11 +29,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const SidebarContent = () => (
     <div className="flex h-full flex-col gap-4 py-4">
-      <div className="px-6 py-2">
-        <h1 className="text-xl font-bold tracking-tight text-primary flex items-center gap-2">
-          <span className="w-8 h-8 rounded-md bg-primary text-primary-foreground flex items-center justify-center">A</span>
-          Agency CRM
-        </h1>
+      <div className="px-4 py-3">
+        <img
+          src="/websensial-logo.png"
+          alt="Websensial"
+          className="h-9 w-auto object-contain"
+        />
       </div>
       <div className="flex-1 px-4">
         <nav className="flex flex-col gap-1">
@@ -77,7 +78,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <SidebarContent />
             </SheetContent>
           </Sheet>
-          <div className="font-semibold">Agency CRM</div>
+          <img src="/websensial-logo.png" alt="Websensial" className="h-7 w-auto object-contain" />
         </header>
 
         <div className="flex-1 overflow-auto p-4 md:p-6 lg:p-8">

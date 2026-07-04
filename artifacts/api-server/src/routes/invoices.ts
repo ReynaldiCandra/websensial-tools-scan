@@ -45,10 +45,10 @@ router.get("/invoices", async (req, res) => {
       .leftJoin(prospectsTable, eq(invoicesTable.prospectId, prospectsTable.id))
       .orderBy(invoicesTable.createdAt);
 
-    res.json(rows.map((r) => formatInvoice(r.invoice, r.businessName)));
+    return res.json(rows.map((r) => formatInvoice(r.invoice, r.businessName)));
   } catch (err) {
     req.log.error({ err }, "Failed to list invoices");
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -79,10 +79,10 @@ router.post("/invoices", async (req, res) => {
       .returning();
 
     const [prospect] = await db.select().from(prospectsTable).where(eq(prospectsTable.id, prospectId));
-    res.status(201).json(formatInvoice(row, prospect?.businessName));
+    return res.status(201).json(formatInvoice(row, prospect?.businessName));
   } catch (err) {
     req.log.error({ err }, "Failed to create invoice");
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -95,10 +95,10 @@ router.get("/invoices/:id", async (req, res) => {
       .leftJoin(prospectsTable, eq(invoicesTable.prospectId, prospectsTable.id))
       .where(eq(invoicesTable.id, id));
     if (!r) return res.status(404).json({ error: "Invoice not found" });
-    res.json(formatInvoice(r.invoice, r.businessName));
+    return res.json(formatInvoice(r.invoice, r.businessName));
   } catch (err) {
     req.log.error({ err }, "Failed to get invoice");
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -128,10 +128,10 @@ router.patch("/invoices/:id", async (req, res) => {
     const [row] = await db.update(invoicesTable).set(update).where(eq(invoicesTable.id, id)).returning();
     if (!row) return res.status(404).json({ error: "Invoice not found" });
     const [prospect] = await db.select().from(prospectsTable).where(eq(prospectsTable.id, row.prospectId));
-    res.json(formatInvoice(row, prospect?.businessName));
+    return res.json(formatInvoice(row, prospect?.businessName));
   } catch (err) {
     req.log.error({ err }, "Failed to update invoice");
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -139,10 +139,10 @@ router.delete("/invoices/:id", async (req, res) => {
   try {
     const { id } = DeleteInvoiceParams.parse({ id: Number(req.params.id) });
     await db.delete(invoicesTable).where(eq(invoicesTable.id, id));
-    res.status(204).send();
+    return res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete invoice");
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 

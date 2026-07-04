@@ -34,7 +34,7 @@ router.get("/prospects", async (req, res) => {
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(sql`created_at DESC`);
 
-    res.json(
+    return res.json(
       rows.map((r) => ({
         ...r,
         rating: r.rating !== null ? parseFloat(r.rating) : null,
@@ -45,7 +45,7 @@ router.get("/prospects", async (req, res) => {
     );
   } catch (err) {
     req.log.error({ err }, "Failed to list prospects");
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -74,7 +74,7 @@ router.post("/prospects", async (req, res) => {
       })
       .returning();
 
-    res.status(201).json({
+    return res.status(201).json({
       ...row,
       rating: row.rating !== null ? parseFloat(row.rating) : null,
       dealValue: row.dealValue !== null ? parseFloat(row.dealValue) : null,
@@ -83,7 +83,7 @@ router.post("/prospects", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Failed to create prospect");
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -92,7 +92,7 @@ router.get("/prospects/:id", async (req, res) => {
     const { id } = GetProspectParams.parse({ id: Number(req.params.id) });
     const [row] = await db.select().from(prospectsTable).where(eq(prospectsTable.id, id));
     if (!row) return res.status(404).json({ error: "Prospect not found" });
-    res.json({
+    return res.json({
       ...row,
       rating: row.rating !== null ? parseFloat(row.rating) : null,
       dealValue: row.dealValue !== null ? parseFloat(row.dealValue) : null,
@@ -101,7 +101,7 @@ router.get("/prospects/:id", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Failed to get prospect");
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -129,7 +129,7 @@ router.patch("/prospects/:id", async (req, res) => {
 
     const [row] = await db.update(prospectsTable).set(update).where(eq(prospectsTable.id, id)).returning();
     if (!row) return res.status(404).json({ error: "Prospect not found" });
-    res.json({
+    return res.json({
       ...row,
       rating: row.rating !== null ? parseFloat(row.rating) : null,
       dealValue: row.dealValue !== null ? parseFloat(row.dealValue) : null,
@@ -138,7 +138,7 @@ router.patch("/prospects/:id", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Failed to update prospect");
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -146,10 +146,10 @@ router.delete("/prospects/:id", async (req, res) => {
   try {
     const { id } = DeleteProspectParams.parse({ id: Number(req.params.id) });
     await db.delete(prospectsTable).where(eq(prospectsTable.id, id));
-    res.status(204).send();
+    return res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete prospect");
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -165,7 +165,7 @@ router.patch("/prospects/:id/status", async (req, res) => {
       .where(eq(prospectsTable.id, id))
       .returning();
     if (!row) return res.status(404).json({ error: "Prospect not found" });
-    res.json({
+    return res.json({
       ...row,
       rating: row.rating !== null ? parseFloat(row.rating) : null,
       dealValue: row.dealValue !== null ? parseFloat(row.dealValue) : null,
@@ -174,7 +174,7 @@ router.patch("/prospects/:id/status", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Failed to update status");
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 

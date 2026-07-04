@@ -360,7 +360,7 @@ router.post("/previews", async (req, res) => {
       })
       .returning();
 
-    res.status(201).json({
+    return res.status(201).json({
       id: row.id,
       token: row.token,
       previewUrl: `/preview/${row.token}`,
@@ -368,7 +368,7 @@ router.post("/previews", async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "Failed to create preview");
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -380,7 +380,7 @@ router.get("/previews/prospect/:id", async (req, res) => {
       .select()
       .from(previewsTable)
       .where(eq(previewsTable.prospectId, id));
-    res.json(
+    return res.json(
       rows.map((r) => ({
         id: r.id,
         token: r.token,
@@ -393,7 +393,7 @@ router.get("/previews/prospect/:id", async (req, res) => {
     );
   } catch (err) {
     req.log.error({ err }, "Failed to list previews");
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -434,10 +434,10 @@ router.get("/preview/:token", async (req, res) => {
     });
 
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.send(html);
+    return res.send(html);
   } catch (err) {
     req.log.error({ err }, "Failed to serve preview");
-    res.status(500).send("<h1>Server error</h1>");
+    return res.status(500).send("<h1>Server error</h1>");
   }
 });
 

@@ -103,7 +103,10 @@ export function Prospecting() {
 
   const handleImport = async (items: SearchResult[], selectedIdx: Set<number>) => {
     const toImport = [...selectedIdx].map((i) => items[i]).filter(Boolean);
-    if (!toImport.length) return toast({ title: "Pilih minimal 1 bisnis", variant: "destructive" });
+    if (!toImport.length) {
+      toast({ title: "Pilih minimal 1 bisnis", variant: "destructive" });
+      return;
+    }
 
     setImporting(true);
     try {

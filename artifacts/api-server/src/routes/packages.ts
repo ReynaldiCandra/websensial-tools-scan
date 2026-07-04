@@ -22,10 +22,10 @@ function formatPackage(row: typeof packagesTable.$inferSelect) {
 router.get("/packages", async (req, res) => {
   try {
     const rows = await db.select().from(packagesTable).orderBy(packagesTable.price);
-    res.json(rows.map(formatPackage));
+    return res.json(rows.map(formatPackage));
   } catch (err) {
     req.log.error({ err }, "Failed to list packages");
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -38,10 +38,10 @@ router.post("/packages", async (req, res) => {
       .insert(packagesTable)
       .values({ ...rest, price: price.toString(), features: features ?? [] })
       .returning();
-    res.status(201).json(formatPackage(row));
+    return res.status(201).json(formatPackage(row));
   } catch (err) {
     req.log.error({ err }, "Failed to create package");
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -56,10 +56,10 @@ router.patch("/packages/:id", async (req, res) => {
     if (features !== undefined) update.features = features;
     const [row] = await db.update(packagesTable).set(update).where(eq(packagesTable.id, id)).returning();
     if (!row) return res.status(404).json({ error: "Package not found" });
-    res.json(formatPackage(row));
+    return res.json(formatPackage(row));
   } catch (err) {
     req.log.error({ err }, "Failed to update package");
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -67,10 +67,10 @@ router.delete("/packages/:id", async (req, res) => {
   try {
     const { id } = DeletePackageParams.parse({ id: Number(req.params.id) });
     await db.delete(packagesTable).where(eq(packagesTable.id, id));
-    res.status(204).send();
+    return res.status(204).send();
   } catch (err) {
     req.log.error({ err }, "Failed to delete package");
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 

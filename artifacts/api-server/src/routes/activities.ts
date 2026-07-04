@@ -13,10 +13,10 @@ router.get("/prospects/:id/activities", async (req, res) => {
       .from(activitiesTable)
       .where(eq(activitiesTable.prospectId, id))
       .orderBy(desc(activitiesTable.createdAt));
-    res.json(rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })));
+    return res.json(rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })));
   } catch (err) {
     req.log.error({ err }, "Failed to list activities");
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -31,10 +31,10 @@ router.post("/prospects/:id/activities", async (req, res) => {
       .values({ prospectId: id, type: parsed.data.type, notes: parsed.data.notes ?? null })
       .returning();
 
-    res.status(201).json({ ...row, createdAt: row.createdAt.toISOString() });
+    return res.status(201).json({ ...row, createdAt: row.createdAt.toISOString() });
   } catch (err) {
     req.log.error({ err }, "Failed to create activity");
-    res.status(500).json({ error: "Internal server error" });
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 

@@ -70,11 +70,11 @@ const SearchQuerySchema = z.object({
 });
 
 router.get("/prospecting/cities", (_req, res) => {
-  res.json(Object.keys(INDONESIAN_CITIES));
+  return res.json(Object.keys(INDONESIAN_CITIES));
 });
 
 router.get("/prospecting/categories", (_req, res) => {
-  res.json(Object.keys(CATEGORY_TAGS));
+  return res.json(Object.keys(CATEGORY_TAGS));
 });
 
 router.get("/prospecting/search", async (req, res) => {
@@ -141,7 +141,7 @@ router.get("/prospecting/search", async (req, res) => {
       })
       .filter((r) => (onlyNoWebsite ? !r.hasWebsite : true));
 
-    res.json({
+    return res.json({
       total: results.length,
       city,
       category,
@@ -152,7 +152,7 @@ router.get("/prospecting/search", async (req, res) => {
       return res.status(504).json({ error: "Overpass API timeout. Try a smaller city or different category." });
     }
     req.log.error({ err }, "Prospecting search error");
-    res.status(500).json({ error: "Search failed" });
+    return res.status(500).json({ error: "Search failed" });
   }
 });
 
@@ -187,10 +187,10 @@ router.post("/prospecting/bulk-import", async (req, res) => {
 
     const inserted = await db.insert(prospectsTable).values(values).returning({ id: prospectsTable.id });
 
-    res.status(201).json({ imported: inserted.length, ids: inserted.map((r) => r.id) });
+    return res.status(201).json({ imported: inserted.length, ids: inserted.map((r) => r.id) });
   } catch (err) {
     req.log.error({ err }, "Bulk import error");
-    res.status(500).json({ error: "Import failed" });
+    return res.status(500).json({ error: "Import failed" });
   }
 });
 

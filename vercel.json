@@ -1,4 +1,5 @@
 {
+  "regions": ["sin1"],
   "installCommand": "pnpm install",
   "buildCommand": "PORT=3000 BASE_PATH=/ pnpm --filter @workspace/agency-crm run build",
   "outputDirectory": "artifacts/agency-crm/dist/public",

@@ -1,16 +1,16 @@
 {
   "installCommand": "pnpm install",
-  "buildCommand": "PORT=3000 BASE_PATH=/ pnpm --filter @workspace/agency-crm run build",
+  "buildCommand": "PORT=3000 BASE_PATH=/ pnpm --filter @workspace/agency-crm run build && node scripts/build-api-function.mjs",
   "outputDirectory": "artifacts/agency-crm/dist/public",
   "functions": {
-    "api/index.ts": {
+    "api/index.mjs": {
       "memory": 1024,
       "maxDuration": 30
     }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api" },
-    { "source": "/preview/(.*)", "destination": "/api" },
+    { "source": "/api/(.*)", "destination": "/api/index" },
+    { "source": "/preview/(.*)", "destination": "/api/index" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

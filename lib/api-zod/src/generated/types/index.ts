@@ -24,6 +24,8 @@ export * from './prospect';
 export * from './prospectInput';
 export * from './prospectUpdate';
 export * from './renderedTemplate';
+export * from './settings';
+export * from './settingsInput';
 export * from './statusUpdate';
 export * from './template';
 export * from './templateInput';

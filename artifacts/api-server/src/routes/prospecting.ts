@@ -1,6 +1,9 @@
 import { Router } from "express";
-import { db, prospectsTable } from "@workspace/db";
+import { db, prospectsTable, overpassCacheTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
+
+const OVERPASS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 jam — data bisnis lokal jarang berubah harian
 
 const router = Router();
 
@@ -89,30 +92,58 @@ router.get("/prospecting/search", async (req, res) => {
     if (!cityCoords) return res.status(400).json({ error: `City '${city}' not supported` });
     if (!categoryTag) return res.status(400).json({ error: `Category '${category}' not supported` });
 
-    const query = buildOverpassQuery(categoryTag, cityCoords.lat, cityCoords.lon, cityCoords.radius);
-    const url = `https://overpass-api.de/api/interpreter`;
+    // Cache key cuma dari city+category (bukan onlyNoWebsite), karena itu cuma filter tampilan
+    const cacheKey = `${city}::${category}`;
+    let elements: OverpassElement[];
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+    const [cached] = await db
+      .select()
+      .from(overpassCacheTable)
+      .where(eq(overpassCacheTable.cacheKey, cacheKey));
 
-    let overpassRes: Response;
-    try {
-      overpassRes = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: `data=${encodeURIComponent(query)}`,
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
+    const isCacheFresh = cached && Date.now() - cached.createdAt.getTime() < OVERPASS_CACHE_TTL_MS;
+
+    if (isCacheFresh) {
+      elements = cached.result as OverpassElement[];
+    } else {
+      const query = buildOverpassQuery(categoryTag, cityCoords.lat, cityCoords.lon, cityCoords.radius);
+      const url = `https://overpass-api.de/api/interpreter`;
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20000);
+
+      let overpassRes: Response;
+      try {
+        overpassRes = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: `data=${encodeURIComponent(query)}`,
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      if (!overpassRes.ok) {
+        // Overpass lagi error/rate-limit — kalau ada cache lama (walau basi), lebih baik pakai itu daripada gagal total
+        if (cached) {
+          elements = cached.result as OverpassElement[];
+        } else {
+          return res.status(502).json({ error: "Overpass API error", status: overpassRes.status });
+        }
+      } else {
+        const data = (await overpassRes.json()) as { elements: OverpassElement[] };
+        elements = data.elements ?? [];
+
+        await db
+          .insert(overpassCacheTable)
+          .values({ cacheKey, result: elements })
+          .onConflictDoUpdate({
+            target: overpassCacheTable.cacheKey,
+            set: { result: elements, createdAt: new Date() },
+          });
+      }
     }
-
-    if (!overpassRes.ok) {
-      return res.status(502).json({ error: "Overpass API error", status: overpassRes.status });
-    }
-
-    const data = await overpassRes.json() as { elements: OverpassElement[] };
-    const elements = data.elements ?? [];
 
     const results = elements
       .filter((el) => el.tags?.name)

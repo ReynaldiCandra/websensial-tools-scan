@@ -22,6 +22,8 @@ tags:
     description: Service packages & pricing
   - name: dashboard
     description: Dashboard summary & analytics
+  - name: settings
+    description: Agency profile & preferences
 
 paths:
   /healthz:
@@ -469,6 +471,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/Package"
 
+  /settings:
+    get:
+      operationId: getSettings
+      tags: [settings]
+      summary: Get agency settings
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+    put:
+      operationId: updateSettings
+      tags: [settings]
+      summary: Update agency settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsInput"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+
   /packages/{id}:
     patch:
       operationId: updatePackage
@@ -844,6 +876,34 @@ components:
           type: string
 
     # ── PACKAGE ──────────────────────────────────────────────
+    Settings:
+      type: object
+      required: [id, agencyName, contactEmail, whatsappNumber, defaultCurrency, updatedAt]
+      properties:
+        id:
+          type: integer
+        agencyName:
+          type: string
+        contactEmail:
+          type: string
+        whatsappNumber:
+          type: string
+        defaultCurrency:
+          type: string
+        updatedAt:
+          type: string
+
+    SettingsInput:
+      type: object
+      required: [agencyName, contactEmail, whatsappNumber]
+      properties:
+        agencyName:
+          type: string
+        contactEmail:
+          type: string
+        whatsappNumber:
+          type: string
+
     Package:
       type: object
       required: [id, name, price, features, createdAt]

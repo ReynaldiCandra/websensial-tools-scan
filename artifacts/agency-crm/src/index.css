@@ -114,4 +114,23 @@
   body {
     @apply bg-background text-foreground font-sans antialiased;
   }
+  ::selection {
+    @apply bg-primary/20 text-foreground;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/20 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/40;
+  }
+  button, a {
+    @apply transition-colors duration-200;
+  }
 }

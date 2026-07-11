@@ -190,6 +190,21 @@ export interface InvoiceUpdate {
   status?: string;
 }
 
+export interface Settings {
+  id: number;
+  agencyName: string;
+  contactEmail: string;
+  whatsappNumber: string;
+  defaultCurrency: string;
+  updatedAt: string;
+}
+
+export interface SettingsInput {
+  agencyName: string;
+  contactEmail: string;
+  whatsappNumber: string;
+}
+
 export interface Package {
   id: number;
   name: string;

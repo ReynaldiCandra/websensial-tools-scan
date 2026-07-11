@@ -468,6 +468,38 @@ export const CreatePackageBody = zod.object({
 
 
 /**
+ * @summary Get agency settings
+ */
+export const GetSettingsResponse = zod.object({
+  "id": zod.number(),
+  "agencyName": zod.string(),
+  "contactEmail": zod.string(),
+  "whatsappNumber": zod.string(),
+  "defaultCurrency": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Update agency settings
+ */
+export const UpdateSettingsBody = zod.object({
+  "agencyName": zod.string(),
+  "contactEmail": zod.string(),
+  "whatsappNumber": zod.string()
+})
+
+export const UpdateSettingsResponse = zod.object({
+  "id": zod.number(),
+  "agencyName": zod.string(),
+  "contactEmail": zod.string(),
+  "whatsappNumber": zod.string(),
+  "defaultCurrency": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
  * @summary Update a package
  */
 export const UpdatePackageParams = zod.object({

@@ -1,0 +1,71 @@
+diff --git a/src/api-entry.ts b/api/index.ts
+similarity index 100%
+rename from src/api-entry.ts
+rename to api/index.ts
+diff --git a/api/package.json b/api/package.json
+new file mode 100644
+index 0000000..3dbc1ca
+--- /dev/null
++++ b/api/package.json
+@@ -0,0 +1,3 @@
++{
++  "type": "module"
++}
+diff --git a/src/api-entry.tsconfig.json b/api/tsconfig.json
+similarity index 78%
+rename from src/api-entry.tsconfig.json
+rename to api/tsconfig.json
+index 41de97a..4ee8397 100644
+--- a/src/api-entry.tsconfig.json
++++ b/api/tsconfig.json
+@@ -9,5 +9,5 @@
+     "strict": false,
+     "resolveJsonModule": true
+   },
+-  "include": ["api-entry.ts", "../artifacts/api-server/src/**/*"]
++  "include": ["index.ts", "../artifacts/api-server/src/**/*"]
+ }
+diff --git a/scripts/build-api-function.mjs b/scripts/build-api-function.mjs
+index 8ad8083..f17d2f4 100644
+--- a/scripts/build-api-function.mjs
++++ b/scripts/build-api-function.mjs
+@@ -9,7 +9,7 @@ const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+ 
+ async function run() {
+   await esbuild({
+-    entryPoints: [path.resolve(rootDir, "src/api-entry.ts")],
++    entryPoints: [path.resolve(rootDir, "api/index.ts")],
+     platform: "node",
+     bundle: true,
+     format: "esm",
+diff --git a/scripts/package.json b/scripts/package.json
+index 58a7c34..3413c78 100644
+--- a/scripts/package.json
++++ b/scripts/package.json
+@@ -5,12 +5,10 @@
+   "type": "module",
+   "scripts": {
+     "hello": "tsx ./src/hello.ts",
+-    "typecheck": "tsc -p tsconfig.json --noEmit",
+-    "build:api": "node ./build-api-function.mjs"
++    "typecheck": "tsc -p tsconfig.json --noEmit"
+   },
+   "devDependencies": {
+     "@types/node": "catalog:",
+-    "esbuild": "0.27.3",
+     "tsx": "catalog:"
+   }
+ }
+diff --git a/vercel.json b/vercel.json
+index 288d7f5..10aae17 100644
+--- a/vercel.json
++++ b/vercel.json
+@@ -1,7 +1,7 @@
+ {
+   "regions": ["sin1"],
+   "installCommand": "pnpm install",
+-  "buildCommand": "PORT=3000 BASE_PATH=/ pnpm --filter @workspace/agency-crm run build && pnpm --filter @workspace/scripts run build:api",
++  "buildCommand": "PORT=3000 BASE_PATH=/ pnpm --filter @workspace/agency-crm run build",
+   "outputDirectory": "artifacts/agency-crm/dist/public",
+   "rewrites": [
+     { "source": "/api/(.*)", "destination": "/api" },

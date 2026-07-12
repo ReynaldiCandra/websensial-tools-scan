@@ -9,5 +9,5 @@
     "strict": false,
     "resolveJsonModule": true
   },
-  "include": ["api-entry.ts", "../artifacts/api-server/src/**/*"]
+  "include": ["index.ts", "../artifacts/api-server/src/**/*"]
 }

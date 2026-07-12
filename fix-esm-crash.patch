@@ -1,0 +1,74 @@
+diff --git a/.gitignore b/.gitignore
+index 6e01530..e7f8fa1 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -48,3 +48,7 @@ Thumbs.db
+ .cache/
+ .local/
+ !.env.example
++
++# generated Vercel function bundle (built by scripts/build-api-function.mjs)
++/api/*.mjs
++/api/*.mjs.map
+diff --git a/scripts/build-api-function.mjs b/scripts/build-api-function.mjs
+index f17d2f4..8ad8083 100644
+--- a/scripts/build-api-function.mjs
++++ b/scripts/build-api-function.mjs
+@@ -9,7 +9,7 @@ const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+ 
+ async function run() {
+   await esbuild({
+-    entryPoints: [path.resolve(rootDir, "api/index.ts")],
++    entryPoints: [path.resolve(rootDir, "src/api-entry.ts")],
+     platform: "node",
+     bundle: true,
+     format: "esm",
+diff --git a/scripts/package.json b/scripts/package.json
+index 3413c78..58a7c34 100644
+--- a/scripts/package.json
++++ b/scripts/package.json
+@@ -5,10 +5,12 @@
+   "type": "module",
+   "scripts": {
+     "hello": "tsx ./src/hello.ts",
+-    "typecheck": "tsc -p tsconfig.json --noEmit"
++    "typecheck": "tsc -p tsconfig.json --noEmit",
++    "build:api": "node ./build-api-function.mjs"
+   },
+   "devDependencies": {
+     "@types/node": "catalog:",
++    "esbuild": "0.27.3",
+     "tsx": "catalog:"
+   }
+ }
+diff --git a/api/index.ts b/src/api-entry.ts
+similarity index 100%
+rename from api/index.ts
+rename to src/api-entry.ts
+diff --git a/api/tsconfig.json b/src/api-entry.tsconfig.json
+similarity index 78%
+rename from api/tsconfig.json
+rename to src/api-entry.tsconfig.json
+index 4ee8397..41de97a 100644
+--- a/api/tsconfig.json
++++ b/src/api-entry.tsconfig.json
+@@ -9,5 +9,5 @@
+     "strict": false,
+     "resolveJsonModule": true
+   },
+-  "include": ["index.ts", "../artifacts/api-server/src/**/*"]
++  "include": ["api-entry.ts", "../artifacts/api-server/src/**/*"]
+ }
+diff --git a/vercel.json b/vercel.json
+index 10aae17..288d7f5 100644
+--- a/vercel.json
++++ b/vercel.json
+@@ -1,7 +1,7 @@
+ {
+   "regions": ["sin1"],
+   "installCommand": "pnpm install",
+-  "buildCommand": "PORT=3000 BASE_PATH=/ pnpm --filter @workspace/agency-crm run build",
++  "buildCommand": "PORT=3000 BASE_PATH=/ pnpm --filter @workspace/agency-crm run build && pnpm --filter @workspace/scripts run build:api",
+   "outputDirectory": "artifacts/agency-crm/dist/public",
+   "rewrites": [
+     { "source": "/api/(.*)", "destination": "/api" },

@@ -48,3 +48,7 @@ Thumbs.db
 .cache/
 .local/
 !.env.example
+
+# generated Vercel function bundle (built by scripts/build-api-function.mjs)
+/api/*.mjs
+/api/*.mjs.map

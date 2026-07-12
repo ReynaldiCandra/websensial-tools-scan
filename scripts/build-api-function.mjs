@@ -9,7 +9,7 @@ const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 async function run() {
   await esbuild({
-    entryPoints: [path.resolve(rootDir, "api/index.ts")],
+    entryPoints: [path.resolve(rootDir, "src/api-entry.ts")],
     platform: "node",
     bundle: true,
     format: "esm",

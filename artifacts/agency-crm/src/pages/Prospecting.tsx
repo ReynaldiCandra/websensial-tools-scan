@@ -693,8 +693,17 @@ export function Prospecting() {
                 </Label>
               </div>
 
+              {/* Datalist ditaruh di luar kolom: kalau berada di dalam kolom,
+                  elemen ini membuat tinggi kolom Kota berbeda 6px dan input
+                  jadi tidak sejajar dengan select Kategori. */}
+              <datalist id="prospecting-cities">
+                {CITIES.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+
               <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-                <div className="space-y-1.5">
+                <div className="flex flex-col gap-1.5">
                   <Label htmlFor="city">Kota</Label>
                   <Input
                     id="city"
@@ -705,13 +714,8 @@ export function Prospecting() {
                     autoComplete="off"
                     className="h-10"
                   />
-                  <datalist id="prospecting-cities">
-                    {CITIES.map((c) => (
-                      <option key={c} value={c} />
-                    ))}
-                  </datalist>
                 </div>
-                <div className="space-y-1.5">
+                <div className="flex flex-col gap-1.5">
                   <Label>Kategori Bisnis</Label>
                   <Select value={category} onValueChange={setCategory}>
                     <SelectTrigger className="h-10 w-full">
@@ -724,7 +728,7 @@ export function Prospecting() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="flex gap-2 sm:col-span-2 lg:col-span-1">
+                <div className="flex gap-2 sm:col-span-2 lg:col-span-1 lg:self-end">
                   <Button
                     onClick={() => handleSearch()}
                     disabled={loading || city.trim().length < 2}

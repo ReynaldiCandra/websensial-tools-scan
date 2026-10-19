@@ -21,6 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api-client";
 import { parseBusinessCsv } from "@/lib/csv";
+import { useListTemplates } from "@workspace/api-client-react";
 
 /**
  * Baca respons API tanpa pernah melempar error JSON.parse yang membingungkan.
@@ -79,6 +80,8 @@ interface StoredSearch {
   onlyNoWebsite: boolean;
   results: SearchResult[];
   searchMeta: { city: string; category: string; total: number; source?: string };
+  page?: number;
+  hasMore?: boolean;
   savedAt: string;
 }
 
@@ -167,7 +170,15 @@ export function Prospecting() {
     source?: string;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [lastSearchAt, setLastSearchAt] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [waLogged, setWaLogged] = useState<Set<string>>(new Set());
+
+  // Template WA dipakai untuk mengisi pesan sebelum chat dibuka.
+  const { data: waTemplates } = useListTemplates();
 
   // Credit monitor for the Google Maps provider (Serper).
   const [quota, setQuota] = useState<QuotaInfo | null>(null);
@@ -237,68 +248,255 @@ export function Prospecting() {
       setResults(saved.results);
       setSearchMeta(saved.searchMeta);
       setLastSearchAt(saved.savedAt ?? null);
+      setPage(saved.page ?? 1);
+      setHasMore(Boolean(saved.hasMore));
     } catch {
       // Storage blocked or corrupted: start with a clean page.
     }
   }, [loadQuota]);
 
-  const handleSearch = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setResults(null);
-    setSelected(new Set());
+  const fetchPage = useCallback(
+    async (nextPage: number, options: { append?: boolean; refresh?: boolean } = {}) => {
+      const append = options.append ?? false;
 
-    try {
-      const params = new URLSearchParams({ city, category, onlyNoWebsite: String(onlyNoWebsite) });
-      const res = await apiFetch(`/api/prospecting/search?${params}`);
-      const json = await readApiResponse(res);
-      if (!res.ok) {
-        throw new Error(
-          typeof json.error === "string" ? json.error : `Pencarian gagal (HTTP ${res.status})`,
-        );
+      if (append) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+        setResults(null);
+        setSelected(new Set());
       }
-      if (!Array.isArray(json.results)) {
-        throw new Error("Format respons pencarian tidak valid. Coba lagi.");
-      }
-      const nextMeta = {
-        city: String(json.city ?? city),
-        category: String(json.category ?? category),
-        total: Number(json.total ?? 0),
-        source: typeof json.source === "string" ? json.source : undefined,
-      };
-      const savedAt = new Date().toISOString();
-
-      setResults(json.results as SearchResult[]);
-      setSearchMeta(nextMeta);
-      setLastSearchAt(savedAt);
+      setError(null);
+      setNotice(null);
 
       try {
-        localStorage.setItem(
-          LAST_SEARCH_KEY,
-          JSON.stringify({
-            city,
-            category,
-            onlyNoWebsite,
-            results: json.results as SearchResult[],
-            searchMeta: nextMeta,
-            savedAt,
-          } satisfies StoredSearch),
-        );
-      } catch {
-        // Storage full or disabled: the in-memory result stays on screen.
+        const params = new URLSearchParams({
+          city,
+          category,
+          onlyNoWebsite: String(onlyNoWebsite),
+          page: String(nextPage),
+        });
+        if (options.refresh) params.set("refresh", "1");
+
+        const res = await apiFetch(`/api/prospecting/search?${params}`);
+        const json = await readApiResponse(res);
+        if (!res.ok) {
+          throw new Error(
+            typeof json.error === "string" ? json.error : `Pencarian gagal (HTTP ${res.status})`,
+          );
+        }
+        if (!Array.isArray(json.results)) {
+          throw new Error("Format respons pencarian tidak valid. Coba lagi.");
+        }
+
+        const incoming = json.results as SearchResult[];
+        const nextMeta = {
+          city: String(json.city ?? city),
+          category: String(json.category ?? category),
+          total: Number(json.total ?? 0),
+          source: typeof json.source === "string" ? json.source : undefined,
+        };
+        const nextHasMore = Boolean(json.hasMore);
+        const savedAt = new Date().toISOString();
+
+        setResults((prev) => {
+          const merged = append && prev ? [...prev] : [];
+          const seen = new Set(merged.map(rowKey));
+          for (const row of incoming) {
+            const key = rowKey(row);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            merged.push(row);
+          }
+
+          try {
+            localStorage.setItem(
+              LAST_SEARCH_KEY,
+              JSON.stringify({
+                city,
+                category,
+                onlyNoWebsite,
+                results: merged,
+                searchMeta: nextMeta,
+                page: nextPage,
+                hasMore: nextHasMore,
+                savedAt,
+              } satisfies StoredSearch),
+            );
+          } catch {
+            // Storage full or disabled: the in-memory result stays on screen.
+          }
+
+          return merged;
+        });
+
+        setPage(nextPage);
+        setHasMore(nextHasMore);
+        setSearchMeta(nextMeta);
+        setLastSearchAt(savedAt);
+
+        if (typeof json.notice === "string") setNotice(json.notice);
+      } catch (e: unknown) {
+        const message =
+          e instanceof TypeError
+            ? "Tidak bisa menghubungi server. Pastikan API berjalan (jalankan `npm run dev`)."
+            : (e as Error).message;
+        setError(message || "Pencarian gagal. Coba lagi.");
+      } finally {
+        if (append) setLoadingMore(false);
+        else setLoading(false);
+        void loadQuota();
+      }
+    },
+    [city, category, onlyNoWebsite, loadQuota],
+  );
+
+  const handleSearch = useCallback(
+    (force = false) => {
+      void fetchPage(1, { refresh: force });
+    },
+    [fetchPage],
+  );
+
+  const handleLoadMore = useCallback(() => {
+    void fetchPage(page + 1, { append: true });
+  }, [fetchPage, page]);
+
+  const waNumber = (phone: string) => phone.replace(/^0/, "62").replace(/\D/g, "");
+
+  const buildWaMessage = (row: SearchResult) => {
+    const template = waTemplates?.find((t) => t.type === "initial") ?? waTemplates?.[0];
+    if (!template) return null;
+
+    return {
+      name: template.name,
+      text: template.content
+        .replace(/\{\{businessName\}\}/g, row.name)
+        .replace(/\{\{ownerName\}\}/g, row.ownerName || "Bapak/Ibu")
+        .replace(/\{\{category\}\}/g, row.category),
+    };
+  };
+
+  /** Simpan lead (kalau belum ada) lalu catat WA sebagai aktivitas. */
+  const logWaToPipeline = async (row: SearchResult, templateName: string | null) => {
+    const res = await apiFetch("/api/prospecting/bulk-import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prospects: [
+          {
+            businessName: row.name,
+            phone: row.phone || "",
+            address: row.address ?? undefined,
+            category: row.category,
+            hasWebsite: row.hasWebsite,
+            mapsUrl: row.mapsUrl ?? undefined,
+            rating: row.rating ?? undefined,
+            reviewCount: row.reviewCount ?? undefined,
+          },
+        ],
+      }),
+    });
+
+    const json = await readApiResponse(res);
+    if (!res.ok) {
+      throw new Error(
+        typeof json.error === "string" ? json.error : `Gagal mencatat lead (HTTP ${res.status})`,
+      );
+    }
+
+    const ids = [
+      ...(Array.isArray(json.ids) ? json.ids : []),
+      ...(Array.isArray(json.matchedIds) ? json.matchedIds : []),
+    ];
+    const prospectId = Number(ids[0] ?? 0);
+    if (!prospectId) return null;
+
+    await apiFetch(`/api/prospects/${prospectId}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "dihubungi" }),
+    });
+
+    await apiFetch(`/api/prospects/${prospectId}/activities`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "wa_sent",
+        notes: templateName ? `WA dikirim — template: ${templateName}` : "WA dikirim dari Prospecting",
+      }),
+    });
+
+    return prospectId;
+  };
+
+  const handleWa = async (row: SearchResult) => {
+    const rendered = buildWaMessage(row);
+    const url = `https://wa.me/${waNumber(row.phone)}${
+      rendered ? `?text=${encodeURIComponent(rendered.text)}` : ""
+    }`;
+    window.open(url, "_blank");
+
+    const key = rowKey(row);
+    if (waLogged.has(key)) return;
+    setWaLogged((prev) => new Set(prev).add(key));
+
+    try {
+      const prospectId = await logWaToPipeline(row, rendered?.name ?? null);
+      if (prospectId) {
+        toast({
+          title: "Tercatat di pipeline",
+          description: `${row.name} → status Dihubungi.`,
+        });
       }
     } catch (e: unknown) {
-      const message =
-        e instanceof TypeError
-          ? "Tidak bisa menghubungi server. Pastikan API berjalan (jalankan `npm run dev`)."
-          : (e as Error).message;
-      setError(message || "Pencarian gagal. Coba lagi.");
-    } finally {
-      setLoading(false);
-      // Every uncached search consumes one credit; refresh the counter.
-      void loadQuota();
+      toast({
+        title: "WA dibuka, pencatatan gagal",
+        description: (e as Error).message,
+        variant: "destructive",
+      });
     }
-  }, [city, category, onlyNoWebsite, loadQuota]);
+  };
+
+  const exportCsv = () => {
+    const header = [
+      "Nama",
+      "Kategori",
+      "Rating",
+      "Jumlah Review",
+      "No HP",
+      "Alamat",
+      "Website",
+      "Status Website",
+      "Skor Prioritas",
+      "Link Maps",
+    ];
+    const escape = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+
+    const rows = displayed.map((row) => [
+      row.name,
+      row.category,
+      row.rating ?? "",
+      row.reviewCount ?? "",
+      row.phone,
+      row.address ?? "",
+      row.website ?? "",
+      row.hasWebsite ? "Ada website" : "Belum ada website",
+      priorityScore(row),
+      row.mapsUrl ?? "",
+    ]);
+
+    const csv =
+      "\uFEFF" +
+      [header, ...rows].map((line) => line.map(escape).join(",")).join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = `prospek-${city}-${category}.csv`.replace(/\s+/g, "-").toLowerCase();
+    link.click();
+    URL.revokeObjectURL(objectUrl);
+  };
 
   const toggleSelect = (key: string) => {
     setSelected((prev) => {
@@ -383,11 +581,6 @@ export function Prospecting() {
     setCsvSelected(new Set(parsed.map((_, i) => i)));
   };
 
-  const waUrl = (phone: string) => {
-    const clean = phone.replace(/^0/, "62").replace(/\D/g, "");
-    return `https://wa.me/${clean}`;
-  };
-
   return (
     <div className="space-y-6">
       <div>
@@ -438,6 +631,19 @@ export function Prospecting() {
           </a>
         </CardContent>
       </Card>
+
+      {quota?.configured &&
+        quota.remaining !== null &&
+        quota.quota > 0 &&
+        quota.remaining <= Math.ceil(quota.quota * 0.1) && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>
+              Sisa kuota tinggal <strong>{quota.remaining.toLocaleString("id-ID")}</strong> pencarian.
+              Setelah habis, pencarian otomatis memakai OpenStreetMap (tanpa rating dan nomor HP).
+            </p>
+          </div>
+        )}
 
       <Tabs defaultValue="search">
         <TabsList>
@@ -509,17 +715,31 @@ export function Prospecting() {
                       Hanya yang belum punya website
                     </Label>
                   </div>
-                  <Button
-                    onClick={handleSearch}
-                    disabled={loading || city.trim().length < 2}
-                    className="w-full gap-2"
-                  >
-                    {loading ? (
-                      <><RefreshCw className="h-4 w-4 animate-spin" /> Mencari...</>
-                    ) : (
-                      <><Search className="h-4 w-4" /> Cari Sekarang</>
-                    )}
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => handleSearch()}
+                      disabled={loading || city.trim().length < 2}
+                      className="flex-1 gap-2"
+                    >
+                      {loading ? (
+                        <><RefreshCw className="h-4 w-4 animate-spin" /> Mencari...</>
+                      ) : (
+                        <><Search className="h-4 w-4" /> Cari Sekarang</>
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => handleSearch(true)}
+                      disabled={loading || city.trim().length < 2}
+                      title="Abaikan cache 24 jam (memakai 1 kredit)"
+                      className="gap-2"
+                    >
+                      <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+                    </Button>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Tombol panah = paksa ambil data baru (1 kredit).
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -533,6 +753,13 @@ export function Prospecting() {
                 <p className="text-destructive/80">{error}</p>
                 <p className="mt-1 text-muted-foreground">Coba gunakan tab Import CSV atau coba kota/kategori lain.</p>
               </div>
+            </div>
+          )}
+
+          {notice && (
+            <div className="flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3 text-xs text-primary">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>{notice}</p>
             </div>
           )}
 
@@ -581,6 +808,11 @@ export function Prospecting() {
                     <span className="text-[10px] text-muted-foreground shrink-0">
                       disimpan {formatSavedAt(lastSearchAt)}
                     </span>
+                  )}
+                  {displayed.length > 0 && (
+                    <Button variant="outline" size="sm" onClick={exportCsv} className="h-7 text-xs gap-1">
+                      <Download className="h-3.5 w-3.5" /> CSV
+                    </Button>
                   )}
                   {displayed.length > 0 && (
                     <Button variant="ghost" size="sm" onClick={toggleAll} className="h-7 text-xs gap-1">
@@ -669,11 +901,15 @@ export function Prospecting() {
                       </div>
                       <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                         {r.phone && (
-                          <a href={waUrl(r.phone)} target="_blank" rel="noopener noreferrer">
-                            <Button variant="ghost" size="sm" className="h-7 px-2 text-green-600 hover:text-green-700 hover:bg-green-50">
-                              WA
-                            </Button>
-                          </a>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => void handleWa(r)}
+                            title="Kirim WA ber-template & catat ke pipeline"
+                            className="h-7 px-2 text-green-600 hover:text-green-700 hover:bg-green-50"
+                          >
+                            WA
+                          </Button>
                         )}
                         {r.mapsUrl && (
                           <a href={r.mapsUrl} target="_blank" rel="noopener noreferrer">
@@ -687,6 +923,29 @@ export function Prospecting() {
                     );
                   })}
                 </div>
+              )}
+
+              {hasMore && (
+                <div className="flex justify-center pt-1">
+                  <Button
+                    variant="outline"
+                    onClick={handleLoadMore}
+                    disabled={loadingMore}
+                    className="gap-2"
+                  >
+                    {loadingMore ? (
+                      <><RefreshCw className="h-4 w-4 animate-spin" /> Memuat...</>
+                    ) : (
+                      <><ChevronDown className="h-4 w-4" /> Muat 20 bisnis lagi</>
+                    )}
+                  </Button>
+                </div>
+              )}
+
+              {!hasMore && results.length > 0 && (
+                <p className="text-center text-[11px] text-muted-foreground">
+                  Semua hasil untuk pencarian ini sudah dimuat.
+                </p>
               )}
             </div>
           )}

@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import crypto from "node:crypto";
 import { logger } from "../lib/logger";
+import { SESSION_COOKIE, verifySessionToken } from "../lib/session";
 
 /** Returned once per process so dev logs are not spammed. */
 let warnedMissingKey = false;
@@ -35,6 +36,9 @@ function isPublicShareLink(req: Request): boolean {
  */
 export function requireApiKey(req: Request, res: Response, next: NextFunction): Response | void {
   if (isPublicShareLink(req)) return next();
+
+  // Browser sessions take precedence: the UI never holds an API key anymore.
+  if (verifySessionToken(req.cookies?.[SESSION_COOKIE])) return next();
 
   const expected = process.env.ADMIN_API_KEY?.trim();
 

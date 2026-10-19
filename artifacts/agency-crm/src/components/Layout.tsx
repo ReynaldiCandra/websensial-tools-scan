@@ -14,12 +14,14 @@ import {
   Search,
   Bell,
   BookOpen,
+  LogOut,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useTheme } from "@/components/theme-provider";
 import { useGetSettings } from "@workspace/api-client-react";
+import { apiFetch } from "@/lib/api-client";
 
 const mainNavItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -103,6 +105,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { data: settings } = useGetSettings();
   const agencyName = settings?.agencyName || "Websensial";
 
+  const handleLogout = async () => {
+    try {
+      await apiFetch("/api/auth/logout", { method: "POST" });
+    } finally {
+      // Reload supaya state React Query dan halaman ikut dibersihkan.
+      window.location.assign("/");
+    }
+  };
+
   const SidebarContent = () => (
     <div className="flex h-full flex-col gap-6 py-4">
       <div className="flex items-center justify-between px-4 py-3">
@@ -165,6 +176,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <div className="hidden md:block">
               <ThemeToggle />
             </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleLogout}
+              className="rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+              aria-label="Keluar"
+              title="Keluar"
+            >
+              <LogOut className="h-[18px] w-[18px]" />
+            </Button>
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
               {getInitials(agencyName)}
             </div>

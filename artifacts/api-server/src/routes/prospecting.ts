@@ -9,6 +9,7 @@ import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { csvToRecords, type CsvRecord } from "../lib/csv";
 import { logger } from "../lib/logger";
+import { clientIp, rateLimit, sweepRateLimitBuckets } from "../lib/rate-limit";
 
 const OVERPASS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 jam — data bisnis lokal jarang berubah harian
 const CACHE_RETRY_AFTER_FAILURE_MS = 60 * 1000;
@@ -293,6 +294,10 @@ const SearchQuerySchema = z.object({
   city: z.string().trim().min(2).max(60),
   category: z.string(),
   onlyNoWebsite: BooleanQuery.optional().default(true),
+  // Google Maps returns ~20 places per page; page 2+ appends more leads.
+  page: z.coerce.number().int().min(1).max(10).optional().default(1),
+  // Bypasses the 24h cache and therefore spends one credit.
+  refresh: BooleanQuery.optional().default(false),
 });
 
 async function readOverpassCache(cacheKey: string): Promise<CachedElements> {
@@ -765,6 +770,8 @@ async function fetchOutscraper(
   city: string,
   category: string,
 ): Promise<ProspectSearchResult[]> {
+  // Outscraper has no page parameter here, so it is only used for page 1.
+
   const apiKey = process.env.OUTSCRAPER_API_KEY?.trim();
   if (!apiKey) throw new Error("OUTSCRAPER_API_KEY is not configured");
 
@@ -849,6 +856,7 @@ async function fetchOutscraper(
 async function fetchSerper(
   city: string,
   category: string,
+  page = 1,
 ): Promise<ProspectSearchResult[]> {
   const apiKey = process.env.SERPER_API_KEY?.trim();
   if (!apiKey) throw new Error("SERPER_API_KEY is not configured");
@@ -867,7 +875,12 @@ async function fetchSerper(
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify({ q: query, gl: "id", hl: "id" }),
+      body: JSON.stringify({
+        q: query,
+        gl: "id",
+        hl: "id",
+        ...(page > 1 ? { page } : {}),
+      }),
       signal: controller.signal,
     });
 
@@ -958,12 +971,24 @@ router.get("/prospecting/quota", async (_req, res) => {
   });
 });
 
+const SEARCH_REQUESTS_PER_MINUTE = 20;
+
 router.get("/prospecting/search", async (req, res) => {
   try {
+    // Guard against double clicks and runaway scripts burning Serper credits.
+    sweepRateLimitBuckets();
+    const limit = rateLimit(`search:${clientIp(req)}`, SEARCH_REQUESTS_PER_MINUTE, 60_000);
+    if (!limit.allowed) {
+      res.setHeader("Retry-After", String(limit.retryAfterSeconds));
+      return res.status(429).json({
+        error: `Terlalu banyak pencarian sekaligus. Tunggu ${limit.retryAfterSeconds} detik lalu coba lagi.`,
+      });
+    }
+
     const parsed = SearchQuerySchema.safeParse(req.query);
     if (!parsed.success) return res.status(400).json({ error: "Invalid query params" });
 
-    const { city, category, onlyNoWebsite } = parsed.data;
+    const { city, category, onlyNoWebsite, page, refresh } = parsed.data;
     const knownCity = lookupKnownCity(city);
     const categoryTags = CATEGORY_TAGS[category];
 
@@ -978,27 +1003,33 @@ router.get("/prospecting/search", async (req, res) => {
     const mapsProviders: {
       name: "serper" | "outscraper";
       cacheKey: string;
-      fetch: (city: string, category: string) => Promise<ProspectSearchResult[]>;
+      limit: number;
+      fetch: (city: string, category: string, page: number) => Promise<ProspectSearchResult[]>;
     }[] = [];
 
     if (process.env.SERPER_API_KEY?.trim()) {
       mapsProviders.push({
         name: "serper",
-        cacheKey: `serper::${city}::${category}::${SERPER_LIMIT}`,
+        cacheKey: `serper::${city}::${category}::${SERPER_LIMIT}::p${page}`,
+        limit: SERPER_LIMIT,
         fetch: fetchSerper,
       });
     }
 
-    if (process.env.OUTSCRAPER_API_KEY?.trim()) {
+    // Outscraper has no pagination in this integration: only page 1.
+    if (page === 1 && process.env.OUTSCRAPER_API_KEY?.trim()) {
       mapsProviders.push({
         name: "outscraper",
         cacheKey: `outscraper::${city}::${category}::${OUTSCRAPER_LIMIT}`,
+        limit: OUTSCRAPER_LIMIT,
         fetch: fetchOutscraper,
       });
     }
 
     for (const provider of mapsProviders) {
-      const cachedProvider = await readProspectCache(provider.cacheKey);
+      const cachedProvider = refresh
+        ? { results: null, stale: false, dbAvailable: isDatabaseConfigured }
+        : await readProspectCache(provider.cacheKey);
 
       if (cachedProvider.results && !cachedProvider.stale) {
         const results = filterByWebsite(cachedProvider.results);
@@ -1006,6 +1037,8 @@ router.get("/prospecting/search", async (req, res) => {
           total: results.length,
           city,
           category,
+          page,
+          hasMore: cachedProvider.results.length >= provider.limit,
           cached: true,
           source: provider.name,
           dbAvailable: cachedProvider.dbAvailable,
@@ -1014,7 +1047,7 @@ router.get("/prospecting/search", async (req, res) => {
       }
 
       try {
-        const providerResults = await provider.fetch(city, category);
+        const providerResults = await provider.fetch(city, category, page);
         if (providerResults.length > 0) {
           await writeProspectCache(provider.cacheKey, providerResults);
           await recordProviderUsage(provider.name);
@@ -1023,6 +1056,8 @@ router.get("/prospecting/search", async (req, res) => {
             total: results.length,
             city,
             category,
+            page,
+            hasMore: providerResults.length >= provider.limit,
             cached: false,
             source: provider.name,
             dbAvailable: cachedProvider.dbAvailable,
@@ -1042,6 +1077,8 @@ router.get("/prospecting/search", async (req, res) => {
             total: results.length,
             city,
             category,
+            page,
+            hasMore: cachedProvider.results.length >= provider.limit,
             cached: true,
             source: provider.name,
             dbAvailable: cachedProvider.dbAvailable,
@@ -1049,6 +1086,23 @@ router.get("/prospecting/search", async (req, res) => {
           });
         }
       }
+    }
+
+    // OpenStreetMap has no paging: page 2+ only makes sense with Google Maps.
+    if (page > 1) {
+      return res.json({
+        total: 0,
+        city,
+        category,
+        page,
+        hasMore: false,
+        cached: false,
+        source: "osm",
+        dbAvailable: isDatabaseConfigured,
+        results: [],
+        notice:
+          "OpenStreetMap tidak mendukung halaman berikutnya. Tambahkan SERPER_API_KEY untuk mengambil lebih dari 20 bisnis.",
+      });
     }
 
     // OpenStreetMap needs a search area: the 20 built-in cities ship with tuned
@@ -1062,7 +1116,9 @@ router.get("/prospecting/search", async (req, res) => {
 
     // Cache key cuma dari city+category (bukan onlyNoWebsite), karena itu cuma filter tampilan
     const cacheKey = `${city}::${category}`;
-    const cached = await readOverpassCache(cacheKey);
+    const cached = refresh
+      ? { elements: null, stale: false, dbAvailable: isDatabaseConfigured }
+      : await readOverpassCache(cacheKey);
 
     let elements: OverpassElement[] | null = cached.stale ? null : cached.elements;
     let source: "cache" | "photon" | "overpass" | "outscraper" = "cache";
@@ -1185,6 +1241,8 @@ router.get("/prospecting/search", async (req, res) => {
       total: results.length,
       city,
       category,
+      page,
+      hasMore: false,
       cached: source === "cache",
       source,
       dbAvailable: cached.dbAvailable,
@@ -1312,6 +1370,8 @@ function willImportRecord(record: CsvRecord): ParsedProspect | null {
  */
 async function insertProspects(candidates: ParsedProspect[]): Promise<{
   importedIds: number[];
+  /** IDs of prospects that already existed and were therefore skipped. */
+  matchedIds: number[];
   skippedInBatch: number;
   skippedExisting: number;
 }> {
@@ -1321,23 +1381,33 @@ async function insertProspects(candidates: ParsedProspect[]): Promise<{
 
   const existingRows = await db
     .select({
+      id: prospectsTable.id,
       phone: prospectsTable.phone,
       mapsUrl: prospectsTable.mapsUrl,
       currentWebsite: prospectsTable.currentWebsite,
     })
     .from(prospectsTable);
 
-  const existingPhoneKeys = new Set(
-    existingRows.map((row) => normalizePhone(row.phone ?? "")).filter((phone) => phone && phone !== "-"),
-  );
-  const existingUrlKeys = new Set(
-    existingRows.map((row) => row.mapsUrl?.trim().toLowerCase()).filter((url): url is string => !!url),
-  );
-  const existingWebsiteKeys = new Set(
-    existingRows
-      .map((row) => (row.currentWebsite ? normalizeWebsiteKey(row.currentWebsite) : null))
-      .filter((site): site is string => !!site),
-  );
+  // Maps keep the matching prospect id so the UI can log a WA to it even when
+  // the lead was already in the pipeline.
+  const existingPhoneIds = new Map<string, number>();
+  const existingUrlIds = new Map<string, number>();
+  const existingWebsiteIds = new Map<string, number>();
+
+  for (const row of existingRows) {
+    const phone = normalizePhone(row.phone ?? "");
+    if (phone && phone !== "-" && !existingPhoneIds.has(phone)) {
+      existingPhoneIds.set(phone, row.id);
+    }
+    const url = row.mapsUrl?.trim().toLowerCase();
+    if (url && !existingUrlIds.has(url)) existingUrlIds.set(url, row.id);
+    if (row.currentWebsite) {
+      const site = normalizeWebsiteKey(row.currentWebsite);
+      if (site && !existingWebsiteIds.has(site)) existingWebsiteIds.set(site, row.id);
+    }
+  }
+
+  const matchedIds = new Set<number>();
 
   const values: {
     businessName: string;
@@ -1366,19 +1436,24 @@ async function insertProspects(candidates: ParsedProspect[]): Promise<{
     const dedupable = phoneKey !== null || urlKey !== null || websiteKey !== null;
 
     if (dedupable) {
-      if (phoneKey !== null && (existingPhoneKeys.has(phoneKey) || batchPhoneKeys.has(phoneKey))) {
-        skippedExisting += batchPhoneKeys.has(phoneKey) ? 0 : 1;
-        skippedInBatch += batchPhoneKeys.has(phoneKey) ? 1 : 0;
+      const matchedExistingId =
+        (phoneKey !== null ? existingPhoneIds.get(phoneKey) : undefined) ??
+        (urlKey !== null ? existingUrlIds.get(urlKey) : undefined) ??
+        (websiteKey !== null ? existingWebsiteIds.get(websiteKey) : undefined);
+
+      if (matchedExistingId !== undefined) {
+        matchedIds.add(matchedExistingId);
+        skippedExisting += 1;
         continue;
       }
-      if (urlKey !== null && (existingUrlKeys.has(urlKey) || batchUrlKeys.has(urlKey))) {
-        skippedExisting += batchUrlKeys.has(urlKey) ? 0 : 1;
-        skippedInBatch += batchUrlKeys.has(urlKey) ? 1 : 0;
-        continue;
-      }
-      if (websiteKey !== null && (existingWebsiteKeys.has(websiteKey) || batchWebsiteKeys.has(websiteKey))) {
-        skippedExisting += batchWebsiteKeys.has(websiteKey) ? 0 : 1;
-        skippedInBatch += batchWebsiteKeys.has(websiteKey) ? 1 : 0;
+
+      const duplicatedInBatch =
+        (phoneKey !== null && batchPhoneKeys.has(phoneKey)) ||
+        (urlKey !== null && batchUrlKeys.has(urlKey)) ||
+        (websiteKey !== null && batchWebsiteKeys.has(websiteKey));
+
+      if (duplicatedInBatch) {
+        skippedInBatch += 1;
         continue;
       }
     }
@@ -1404,11 +1479,16 @@ async function insertProspects(candidates: ParsedProspect[]): Promise<{
   }
 
   if (values.length === 0) {
-    return { importedIds: [], skippedInBatch, skippedExisting };
+    return { importedIds: [], matchedIds: [...matchedIds], skippedInBatch, skippedExisting };
   }
 
   const inserted = await db.insert(prospectsTable).values(values).returning({ id: prospectsTable.id });
-  return { importedIds: inserted.map((row) => row.id), skippedInBatch, skippedExisting };
+  return {
+    importedIds: inserted.map((row) => row.id),
+    matchedIds: [...matchedIds],
+    skippedInBatch,
+    skippedExisting,
+  };
 }
 
 router.post("/prospecting/bulk-import", async (req, res) => {
@@ -1451,6 +1531,7 @@ router.post("/prospecting/bulk-import", async (req, res) => {
       return res.status(201).json({
         imported: insertResult.importedIds.length,
         ids: insertResult.importedIds,
+        matchedIds: insertResult.matchedIds,
         skippedDuplicatesInBatch: insertResult.skippedInBatch + insertResult.skippedExisting,
         skippedExisting: insertResult.skippedExisting,
         invalidRows: invalid,
@@ -1483,6 +1564,7 @@ router.post("/prospecting/bulk-import", async (req, res) => {
     return res.status(201).json({
       imported: insertResult.importedIds.length,
       ids: insertResult.importedIds,
+      matchedIds: insertResult.matchedIds,
       skippedDuplicatesInBatch: insertResult.skippedInBatch + insertResult.skippedExisting,
       skippedExisting: insertResult.skippedExisting,
       truncated,

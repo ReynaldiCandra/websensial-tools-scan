@@ -442,6 +442,53 @@ describe("GET /api/prospecting/search", () => {
     assert.equal(sent?.q, "klinik, Cikarang, Indonesia");
   });
 
+  it("requests the next Serper page and reports hasMore", async () => {
+    process.env.SERPER_API_KEY = "test-serper-key";
+    let sentBody: Record<string, unknown> | null = null;
+
+    mockFetch(async (url, init) => {
+      if (url === "https://google.serper.dev/maps") {
+        sentBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return jsonResponse({
+          places: Array.from({ length: 20 }, (_, index) => ({
+            title: `Butik ${index}`,
+            phoneNumber: "+62 812-0000-0000",
+            cid: String(1000 + index),
+          })),
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    const res = await request(app)
+      .get("/api/prospecting/search")
+      .set("x-api-key", API_KEY)
+      .query({ city: "Bandung", category: "Fashion", page: 2 });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.page, 2);
+    assert.equal(res.body.hasMore, true);
+    assert.equal(res.body.total, 20);
+    const body = sentBody as Record<string, unknown> | null;
+    assert.equal(body?.page, 2);
+  });
+
+  it("explains that OpenStreetMap has no further pages", async () => {
+    mockFetch(async (url) => {
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    const res = await request(app)
+      .get("/api/prospecting/search")
+      .set("x-api-key", API_KEY)
+      .query({ city: "Bandung", category: "Fashion", page: 2 });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.total, 0);
+    assert.equal(res.body.hasMore, false);
+    assert.match(String(res.body.notice), /OpenStreetMap/i);
+  });
+
   it("rejects a city that cannot be geocoded", async () => {
     mockFetch(async (url) => {
       if (url.includes("photon.komoot.io")) return jsonResponse({ features: [] });

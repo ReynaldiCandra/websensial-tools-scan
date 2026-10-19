@@ -103,10 +103,25 @@ capacity. Results from Photon do not include website/phone tags, so every
 result is marked as "belum ada website"; Overpass results are more accurate.
 
 Google Maps results are cached for 24 hours so repeated clicks on the same
-city + category do not consume provider credits.
+city + category do not consume provider credits. Each page holds ~20 places;
+**Muat 20 bisnis lagi** fetches the next page (one credit), the arrow button
+forces a fresh search, results can be exported to CSV, and the WhatsApp button
+opens a chat pre-filled from the initial template while recording the activity
+and moving the lead to **Dihubungi**.
 
 Search **works even when the database is unavailable**. Saving prospects,
 importing to the pipeline, and the CRM pages require `DATABASE_URL`.
+
+## Authentication
+
+The UI is gated by `POST /api/auth/login` (password in `AUTH_PASSWORD`, or
+`ADMIN_API_KEY` when unset). Successful login sets a 30-day signed httpOnly
+cookie (`SESSION_SECRET`); `POST /api/auth/logout` clears it. `ADMIN_API_KEY`
+still works as an `x-api-key`/`Authorization: Bearer` header for scripts and
+tests, but the browser never receives it.
+
+Search requests are limited to 20 per minute per IP, and login attempts to 6
+per 5 minutes, so a leaked entry point cannot drain Serper credits quickly.
 
 If you see an error in the Search tab:
 
@@ -119,8 +134,10 @@ If you see an error in the Search tab:
 1. Push the repo to GitHub and import it in Vercel.
 2. Add these environment variables in **Project → Settings → Environment
    Variables** (Production and Preview): `DATABASE_URL`, `ADMIN_API_KEY`,
-   `VITE_API_KEY`, and `SERPER_API_KEY`. `VITE_API_KEY` must match
-   `ADMIN_API_KEY`; it is embedded at build time, so redeploy after changing it.
+   `AUTH_PASSWORD`, `SESSION_SECRET`, and `SERPER_API_KEY`. The dashboard is
+   protected by a password login: `AUTH_PASSWORD` (falls back to
+   `ADMIN_API_KEY`) is exchanged for a signed httpOnly cookie, and
+   `SESSION_SECRET` signs it. No API key is shipped to the browser anymore.
    `SERPER_API_KEY` enables Google Maps data (rating, phone, website) and needs
    no credit card (2,500 free queries at https://serper.dev). `OUTSCRAPER_API_KEY`
    is still accepted as a fallback; without either key the search uses

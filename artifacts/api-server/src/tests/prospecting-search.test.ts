@@ -143,6 +143,8 @@ describe("GET /api/prospecting/search", () => {
               properties: {
                 osm_id: 201,
                 osm_type: "N",
+                osm_key: "shop",
+                osm_value: "laundry",
                 name: "Photon Laundry",
                 street: "Jl. Photon",
                 housenumber: "10",
@@ -166,6 +168,63 @@ describe("GET /api/prospecting/search", () => {
     assert.equal(res.body.total, 1);
     assert.equal(res.body.results[0].name, "Photon Laundry");
     assert.equal(res.body.results[0].hasWebsite, false);
+  });
+
+  it("retries Photon with the category label when the first query has no matching tags", async () => {
+    let photonCalls = 0;
+
+    mockFetch(async (url) => {
+      if (url.includes("overpass")) {
+        return textResponse("busy", 502, "text/plain");
+      }
+      if (url.includes("photon.komoot.io")) {
+        photonCalls++;
+        const query = new URL(url).searchParams.get("q");
+
+        if (query === "laundry") {
+          return jsonResponse({
+            features: [
+              {
+                properties: {
+                  osm_id: 301,
+                  osm_key: "building",
+                  osm_value: "yes",
+                  name: "Bukan Laundry",
+                },
+                geometry: { type: "Point", coordinates: [106.806, -6.597] },
+              },
+            ],
+          });
+        }
+
+        return jsonResponse({
+          features: [
+            {
+              properties: {
+                osm_id: 302,
+                osm_key: "shop",
+                osm_value: "laundry",
+                name: "Laundry Fallback",
+                street: "Jl. Fallback",
+              },
+              geometry: { type: "Point", coordinates: [106.806, -6.597] },
+            },
+          ],
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    const res = await request(app)
+      .get("/api/prospecting/search")
+      .set("x-api-key", API_KEY)
+      .query({ city: "Bogor", category: "Laundry" });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.source, "photon");
+    assert.equal(res.body.total, 1);
+    assert.equal(res.body.results[0].name, "Laundry Fallback");
+    assert.ok(photonCalls >= 2);
   });
 
   it("returns a JSON error when both data sources fail", async () => {

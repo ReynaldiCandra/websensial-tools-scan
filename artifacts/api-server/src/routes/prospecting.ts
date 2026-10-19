@@ -78,6 +78,12 @@ const CATEGORY_PHOTON_TAGS: Record<string, string[]> = {
   "Servis Elektronik": ["craft:electronics_repair", "shop:electronics_repair"],
 };
 
+// Photon returns osm_key/osm_value per feature. Filter locally instead of
+// relying on osm_tag query params, which are too strict when combined with q.
+const CATEGORY_TAG_SETS = new Map(
+  Object.entries(CATEGORY_PHOTON_TAGS).map(([category, tags]) => [category, new Set(tags)]),
+);
+
 const router = Router();
 
 const INDONESIAN_CITIES: Record<string, { lat: number; lon: number; radius: number }> = {
@@ -275,20 +281,33 @@ function distanceMeters(
   return Math.hypot(dLat, dLon);
 }
 
-async function fetchPhoton(
-  category: string,
+function buildBoundingBox(cityCoords: { lat: number; lon: number; radius: number }): string {
+  const latDelta = cityCoords.radius / 111_000;
+  const lonDelta =
+    cityCoords.radius / (111_000 * Math.cos((cityCoords.lat * Math.PI) / 180));
+
+  return [
+    cityCoords.lon - lonDelta,
+    cityCoords.lat - latDelta,
+    cityCoords.lon + lonDelta,
+    cityCoords.lat + latDelta,
+  ]
+    .map((value) => value.toFixed(6))
+    .join(",");
+}
+
+async function fetchPhotonQuery(
+  query: string,
   cityCoords: { lat: number; lon: number; radius: number },
-): Promise<OverpassElement[]> {
+  bbox: string,
+): Promise<PhotonFeature[]> {
   const params = new URLSearchParams({
-    q: CATEGORY_KEYWORDS[category] ?? category,
+    q: query,
+    bbox,
     lat: String(cityCoords.lat),
     lon: String(cityCoords.lon),
     limit: "50",
   });
-
-  for (const tag of CATEGORY_PHOTON_TAGS[category] ?? []) {
-    params.append("osm_tag", tag);
-  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), PHOTON_TIMEOUT_MS);
@@ -316,10 +335,42 @@ async function fetchPhoton(
       throw new Error("Photon returned an invalid payload");
     }
 
-    const maxDistance = cityCoords.radius * 1.25;
-    const results: OverpassElement[] = [];
+    return data.features;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
-    for (const feature of data.features) {
+async function fetchPhoton(
+  category: string,
+  cityCoords: { lat: number; lon: number; radius: number },
+): Promise<OverpassElement[]> {
+  const bbox = buildBoundingBox(cityCoords);
+  const allowedTags = CATEGORY_TAG_SETS.get(category) ?? new Set<string>();
+  const maxDistance = cityCoords.radius * 1.25;
+  const queries = Array.from(
+    new Set([CATEGORY_KEYWORDS[category] ?? category, category, "toko"]),
+  );
+  const seen = new Set<number>();
+  const results: OverpassElement[] = [];
+  let lastError: unknown = null;
+
+  for (const query of queries) {
+    let features: PhotonFeature[];
+
+    try {
+      features = await fetchPhotonQuery(query, cityCoords, bbox);
+      lastError = null;
+    } catch (err) {
+      lastError = err;
+      logger.warn(
+        { message: err instanceof Error ? err.message : String(err), query },
+        "Photon query failed; trying next query",
+      );
+      continue;
+    }
+
+    for (const feature of features) {
       const props = feature.properties ?? {};
       const coordinates = feature.geometry?.coordinates;
       if (!props.name || !coordinates) continue;
@@ -330,10 +381,17 @@ async function fetchPhoton(
         continue;
       }
 
+      const tag = `${props.osm_key ?? ""}:${props.osm_value ?? ""}`;
+      if (allowedTags.size > 0 && !allowedTags.has(tag)) continue;
+
+      const id = Number(props.osm_id ?? 0);
+      if (seen.has(id)) continue;
+      seen.add(id);
+
       const addressParts = [props.street, props.housenumber, props.city].filter(Boolean);
 
       results.push({
-        id: Number(props.osm_id ?? 0),
+        id,
         type:
           props.osm_type === "W"
             ? "way"
@@ -354,10 +412,15 @@ async function fetchPhoton(
       });
     }
 
-    return results;
-  } finally {
-    clearTimeout(timeout);
+    // A query with local matches is enough; no need to hit Photon again.
+    if (results.length > 0) break;
   }
+
+  if (results.length === 0 && lastError) {
+    throw lastError;
+  }
+
+  return results;
 }
 
 async function fetchOverpass(query: string): Promise<OverpassElement[]> {

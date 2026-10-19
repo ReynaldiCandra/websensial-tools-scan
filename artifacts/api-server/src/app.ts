@@ -37,7 +37,44 @@ app.use(
     },
   }),
 );
-app.use(cors({ credentials: true }));
+/**
+ * CORS: the dashboard is served from the same origin as this API, so no
+ * browser client needs cross-origin access. `cors({ credentials: true })`
+ * without an origin check reflected every caller's origin, which would let any
+ * website read authenticated CRM responses. Only origins listed in
+ * `CORS_ORIGINS` (comma separated) are granted.
+ */
+const allowedOrigins = new Set(
+  (process.env.CORS_ORIGINS ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+);
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+      return callback(null, false);
+    },
+    credentials: true,
+  }),
+);
+
+// Baseline hardening headers. The public preview pages add their own
+// Content-Security-Policy in routes/previews.ts.
+app.use((req: Request, res: Response, next: NextFunction) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  // CRM data must not be cached by the browser or an intermediary.
+  if (!/^\/(api\/)?preview\//.test(req.path)) {
+    res.setHeader("Cache-Control", "no-store");
+  }
+  next();
+});
+
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

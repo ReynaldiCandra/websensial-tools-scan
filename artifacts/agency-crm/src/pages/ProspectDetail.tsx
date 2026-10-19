@@ -18,6 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Phone, MapPin, Globe, User, Clock, ArrowLeft, MessageSquare, FileText, Wand2 } from "lucide-react";
 import { PreviewGenerator } from "@/components/PreviewGenerator";
+import { formatPhoneDisplay } from "@/lib/phone";
 import { Link } from "wouter";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -76,6 +77,13 @@ export function ProspectDetail() {
           onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey(prospectId) });
           }
+        });
+      },
+      onError: (e) => {
+        toast({
+          title: "Tidak bisa membuka WhatsApp",
+          description: (e as Error).message,
+          variant: "destructive",
         });
       }
     });
@@ -139,7 +147,7 @@ export function ProspectDetail() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3"/> Phone (WA)</p>
-                  <p className="font-medium">{prospect.phone}</p>
+                  <p className="font-medium">{formatPhoneDisplay(prospect.phone)}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground flex items-center gap-1"><User className="h-3 w-3"/> Owner Name</p>

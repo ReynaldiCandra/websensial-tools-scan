@@ -3,8 +3,32 @@ import { db, previewsTable, prospectsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { z } from "zod";
+import { toWaNumber } from "../lib/phone";
 
 const router = Router();
+
+/**
+ * Preview pages are plain HTML built with template strings, and their content
+ * includes business names and taglines that come from Google Maps / CSV.
+ * Without escaping, a business named `<img onerror=...>` would run script on
+ * the public share link (same origin as the CRM).
+ */
+export function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => {
+    switch (char) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      default:
+        return "&#39;";
+    }
+  });
+}
 
 const CreatePreviewBody = z.object({
   prospectId: z.number(),
@@ -76,12 +100,6 @@ function getDefaultAbout(businessName: string, category: string): string {
   return `${businessName} adalah usaha ${category.toLowerCase()} yang telah melayani pelanggan dengan dedikasi penuh. Kami berkomitmen memberikan pelayanan terbaik dengan kualitas yang tidak mengecewakan. Kepuasan pelanggan adalah prioritas utama kami.`;
 }
 
-function formatPhone(phone: string): string {
-  let p = phone.replace(/\D/g, "");
-  if (p.startsWith("0")) p = "62" + p.slice(1);
-  else if (!p.startsWith("62")) p = "62" + p;
-  return p;
-}
 
 function generatePreviewHTML(data: {
   businessName: string;
@@ -97,13 +115,21 @@ function generatePreviewHTML(data: {
 }): string {
   const c = COLOR_SCHEMES[data.colorScheme] ?? COLOR_SCHEMES["indigo"];
   const icon = CATEGORY_ICONS[data.category] ?? "🏪";
-  const waPhone = formatPhone(data.phone);
+  const waPhone = toWaNumber(data.phone);
   const waMsg = encodeURIComponent(`Halo ${data.ownerName ?? data.businessName}, saya tertarik dengan layanan ${data.businessName}. Boleh saya tahu lebih lanjut?`);
+
+  // Semua nilai yang berasal dari data eksternal di-escape sebelum masuk HTML.
+  const businessName = escapeHtml(data.businessName);
+  const tagline = escapeHtml(data.tagline);
+  const aboutText = escapeHtml(data.aboutText);
+  const category = escapeHtml(data.category);
+  const phone = escapeHtml(data.phone ?? "");
+  const address = escapeHtml(data.address ?? "");
 
   const serviceCards = data.services.map((s) => `
     <div class="service-card">
       <div class="service-icon">${icon}</div>
-      <h3>${s.trim()}</h3>
+      <h3>${escapeHtml(s.trim())}</h3>
     </div>
   `).join("");
 
@@ -112,8 +138,8 @@ function generatePreviewHTML(data: {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${data.businessName}</title>
-  <meta name="description" content="${data.tagline}">
+  <title>${businessName}</title>
+  <meta name="description" content="${tagline}">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -251,19 +277,19 @@ function generatePreviewHTML(data: {
 <body>
 
 <div class="demo-banner">
-  Ini adalah preview website untuk <strong>${data.businessName}</strong> — dibuat oleh <strong>Websensial</strong> &nbsp;·&nbsp;
+  Ini adalah preview website untuk <strong>${businessName}</strong> — dibuat oleh <strong>Websensial</strong> &nbsp;·&nbsp;
   <a href="https://wa.me/6281234567890?text=Saya+ingin+website+seperti+ini" target="_blank">Hubungi kami</a>
 </div>
 
 <nav>
-  <div class="nav-brand">${icon} ${data.businessName}</div>
+  <div class="nav-brand">${icon} ${businessName}</div>
   <a href="https://wa.me/${waPhone}?text=${waMsg}" class="nav-cta" target="_blank">Hubungi Kami</a>
 </nav>
 
 <section class="hero" style="padding-top:80px;padding-bottom:100px">
   <div class="hero-icon">${icon}</div>
-  <h1>${data.businessName}</h1>
-  <p>${data.tagline}</p>
+  <h1>${businessName}</h1>
+  <p>${tagline}</p>
   <a href="https://wa.me/${waPhone}?text=${waMsg}" class="hero-cta" target="_blank">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.557 4.12 1.532 5.848L.047 23.869c-.09.383.247.72.63.63l6.021-1.485A11.942 11.942 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.814 9.814 0 01-5.007-1.371l-.358-.213-3.716.917.935-3.618-.234-.372A9.817 9.817 0 012.182 12C2.182 6.565 6.565 2.182 12 2.182S21.818 6.565 21.818 12 17.435 21.818 12 21.818z"/></svg>
     Chat WhatsApp
@@ -286,7 +312,7 @@ function generatePreviewHTML(data: {
       <div class="about-text">
         <div class="section-tag">Tentang Kami</div>
         <h2>Kenapa Memilih Kami?</h2>
-        <p>${data.aboutText}</p>
+        <p>${aboutText}</p>
         <div class="badge-row">
           <span class="badge">Terpercaya</span>
           <span class="badge">Berpengalaman</span>
@@ -303,7 +329,7 @@ function generatePreviewHTML(data: {
     <div class="section-tag">Hubungi Kami</div>
     <h2>Siap Melayani Anda</h2>
     <div class="contact-box">
-      <h3>Hubungi ${data.businessName}</h3>
+      <h3>Hubungi ${businessName}</h3>
       <p>Kami siap membantu Anda. Chat langsung via WhatsApp untuk respons cepat!</p>
       <div>
         <a href="https://wa.me/${waPhone}?text=${waMsg}" class="wa-btn" target="_blank">
@@ -311,14 +337,14 @@ function generatePreviewHTML(data: {
           Chat WhatsApp Sekarang
         </a>
       </div>
-      ${data.phone ? `<div class="contact-info">📞 ${data.phone}</div>` : ""}
-      ${data.address ? `<div class="contact-info">📍 ${data.address}</div>` : ""}
+      ${data.phone ? `<div class="contact-info">📞 ${phone}</div>` : ""}
+      ${data.address ? `<div class="contact-info">📍 ${address}</div>` : ""}
     </div>
   </div>
 </section>
 
 <footer>
-  <p>&copy; ${new Date().getFullYear()} <strong>${data.businessName}</strong> · ${data.category}</p>
+  <p>&copy; ${new Date().getFullYear()} <strong>${businessName}</strong> · ${category}</p>
   <p style="margin-top:6px">Website ini dibuat oleh <strong>Websensial</strong> · <a href="https://wa.me/6281234567890" style="color:#a5b4fc">Ingin website seperti ini? Hubungi kami!</a></p>
 </footer>
 
@@ -434,6 +460,13 @@ router.get("/preview/:token", async (req, res) => {
     });
 
     res.setHeader("Content-Type", "text/html; charset=utf-8");
+    // Defense in depth: escaping already removes markup from business data, but
+    // this page is public and needs no script at all, so even a missed escape
+    // cannot execute JavaScript here.
+    res.setHeader(
+      "Content-Security-Policy",
+      "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    );
     return res.send(html);
   } catch (err) {
     req.log.error({ err }, "Failed to serve preview");

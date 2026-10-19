@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { db, templatesTable, prospectsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { toWaNumber } from "../lib/phone";
 import {
   CreateTemplateBody,
   UpdateTemplateParams,
@@ -76,8 +77,14 @@ router.post("/templates/:id/render", async (req, res) => {
       .replace(/\{\{ownerName\}\}/g, prospect.ownerName ?? "Bapak/Ibu")
       .replace(/\{\{category\}\}/g, prospect.category);
 
-    const cleanPhone = prospect.phone.replace(/^0/, "62").replace(/\D/g, "");
-    const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+    const waNumber = toWaNumber(prospect.phone);
+    if (!waNumber) {
+      return res.status(400).json({
+        error: "Nomor HP prospek tidak valid untuk WhatsApp. Perbaiki nomornya dulu.",
+      });
+    }
+
+    const waUrl = `https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`;
 
     return res.json({ message, waUrl });
   } catch (err) {

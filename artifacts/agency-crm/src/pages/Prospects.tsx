@@ -32,6 +32,7 @@ import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { formatPhoneDisplay } from "@/lib/phone";
 
 const STAGES: Record<string, { label: string; color: string }> = {
   belum_dihubungi: { label: "Belum Dihubungi", color: "bg-slate-200 text-slate-700" },
@@ -245,7 +246,7 @@ export function Prospects() {
                       </Link>
                     </div>
                     <div className="flex items-center text-xs text-muted-foreground mt-1 gap-2">
-                      <span className="flex items-center gap-1"><Phone className="h-3 w-3"/> {prospect.phone}</span>
+                      <span className="flex items-center gap-1"><Phone className="h-3 w-3"/> {formatPhoneDisplay(prospect.phone)}</span>
                       {prospect.hasWebsite && <span className="flex items-center gap-1"><Globe className="h-3 w-3"/> Web</span>}
                     </div>
                   </TableCell>

@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Link } from "wouter";
 import { Phone, MapPin } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatPhoneDisplay } from "@/lib/phone";
 
 const STAGES = [
   { id: "belum_dihubungi", label: "Belum Dihubungi", color: "border-slate-200 bg-slate-50" },
@@ -48,7 +49,7 @@ export function Pipeline() {
                           <div className="font-semibold text-sm mb-1">{prospect.businessName}</div>
                           <div className="text-xs text-muted-foreground flex flex-col gap-1">
                             <span className="inline-flex items-center gap-1">
-                              <Phone className="h-3 w-3" /> {prospect.phone}
+                              <Phone className="h-3 w-3" /> {formatPhoneDisplay(prospect.phone)}
                             </span>
                             <span className="inline-flex flex-wrap gap-1 mt-1">
                               <span className="px-1.5 py-0.5 rounded-sm bg-slate-100 text-slate-600 text-[10px] uppercase font-medium">{prospect.category}</span>

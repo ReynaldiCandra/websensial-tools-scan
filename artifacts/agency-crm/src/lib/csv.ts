@@ -7,6 +7,11 @@
  * category, mapsUrl).
  */
 
+import { normalizePhone } from "./phone";
+
+// Re-exported so existing `@/lib/csv` imports keep working.
+export { normalizePhone };
+
 const ALIASES: Record<string, string[]> = {
   businessName: ["business name", "businessname", "name", "title", "company", "firm name", "nama bisnis", "nama"],
   phone: [
@@ -120,15 +125,6 @@ function parseRows(input: string): string[][] {
   }
   if (field !== "" || row.length > 0) endRow();
   return rows;
-}
-
-/** Canonical local phone format (08…), matching the API's normalization. */
-export function normalizePhone(raw: string): string {
-  if (!raw) return "";
-  let phone = raw.replace(/\s+/g, "").replace(/[^\d+]/g, "");
-  if (phone.startsWith("+62")) phone = "0" + phone.slice(3);
-  if (phone.startsWith("62") && phone.length > 8) phone = "0" + phone.slice(2);
-  return phone;
 }
 
 export function parseBusinessCsv(text: string): ParsedBusiness[] {

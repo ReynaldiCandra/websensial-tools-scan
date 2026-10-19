@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/api-client";
+import { toWaNumber } from "@/lib/phone";
 
 interface Props {
   prospectId: number;
@@ -101,11 +102,21 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
   };
 
   const waShare = (token: string) => {
+    const waNumber = toWaNumber(phone);
+    if (!waNumber) {
+      toast({
+        title: "Nomor HP tidak valid",
+        description: `Nomor "${phone || "-"}" belum bisa dipakai untuk WhatsApp.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     const url = `${window.location.origin}/preview/${token}`;
     const msg = encodeURIComponent(
       `Halo! Saya sudah siapkan preview website gratis untuk ${businessName}.\n\nSilakan lihat di sini: ${url}\n\nBagaimana menurut Anda? Apakah ingin kita wujudkan websitenya?`
     );
-    window.open(`https://wa.me/${phone.replace(/^0/, "62").replace(/\D/g, "")}?text=${msg}`, "_blank");
+    window.open(`https://wa.me/${waNumber}?text=${msg}`, "_blank");
   };
 
   return (

@@ -15,9 +15,25 @@ interface Bucket {
 
 const buckets = new Map<string, Bucket>();
 
+/**
+ * Client address used as the rate-limit bucket key.
+ *
+ * `x-forwarded-for` can be prepended by the caller, so the left-most entry is
+ * attacker-controlled: sending a new fake IP per attempt would reset the login
+ * bucket every time. The trusted proxy (Vercel) appends the address it actually
+ * saw, so the right-most entry is the one to trust.
+ */
 export function clientIp(req: Request): string {
+  const realIp = req.header("x-real-ip")?.trim();
+  if (realIp) return realIp;
+
   const forwarded = req.header("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0]!.trim();
+  if (forwarded) {
+    const hops = forwarded.split(",").map((hop) => hop.trim()).filter(Boolean);
+    const nearestProxy = hops[hops.length - 1];
+    if (nearestProxy) return nearestProxy;
+  }
+
   return req.ip ?? req.socket.remoteAddress ?? "unknown";
 }
 

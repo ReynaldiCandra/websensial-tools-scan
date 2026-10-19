@@ -7,7 +7,7 @@
     "dev": "node ./build.mjs && node --enable-source-maps --env-file-if-exists=../../.env.local --env-file-if-exists=../../.env ./dist/index.mjs",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps --env-file-if-exists=../../.env.local --env-file-if-exists=../../.env ./dist/index.mjs",
-    "test": "node --env-file-if-exists=../../.env.local --import tsx --test src/tests/auth.test.ts src/tests/prospecting-search.test.ts src/tests/prospecting-import.test.ts",
+    "test": "node --env-file-if-exists=../../.env.local --import tsx --test src/tests/auth.test.ts src/tests/security.test.ts src/tests/phone.test.ts src/tests/prospecting-search.test.ts src/tests/prospecting-import.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -16,7 +16,7 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "drizzle-orm": "^0.45.2",
-    "express": "^5.2.1",
+    "express": "^5.3.0",
     "pino": "^9.14.0",
     "pino-http": "^10.5.0",
     "serverless-http": "^4.0.0",

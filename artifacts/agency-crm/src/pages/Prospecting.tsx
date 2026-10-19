@@ -21,6 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api-client";
 import { parseBusinessCsv } from "@/lib/csv";
+import { formatPhoneDisplay, toWaNumber } from "@/lib/phone";
 import { useListTemplates } from "@workspace/api-client-react";
 
 /**
@@ -362,8 +363,6 @@ export function Prospecting() {
     void fetchPage(page + 1, { append: true });
   }, [fetchPage, page]);
 
-  const waNumber = (phone: string) => phone.replace(/^0/, "62").replace(/\D/g, "");
-
   const buildWaMessage = (row: SearchResult) => {
     const template = waTemplates?.find((t) => t.type === "initial") ?? waTemplates?.[0];
     if (!template) return null;
@@ -431,8 +430,18 @@ export function Prospecting() {
   };
 
   const handleWa = async (row: SearchResult) => {
+    const waNumber = toWaNumber(row.phone);
+    if (!waNumber) {
+      toast({
+        title: "Nomor HP tidak valid",
+        description: `Nomor "${row.phone || "-"}" tidak bisa dipakai untuk WhatsApp. Buka link Maps untuk cek nomornya.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     const rendered = buildWaMessage(row);
-    const url = `https://wa.me/${waNumber(row.phone)}${
+    const url = `https://wa.me/${waNumber}${
       rendered ? `?text=${encodeURIComponent(rendered.text)}` : ""
     }`;
     window.open(url, "_blank");
@@ -670,8 +679,21 @@ export function Prospecting() {
                 Data dari Google Maps (nama, rating, nomor HP, status website) — atau OpenStreetMap bila API key belum aktif.
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+            <CardContent className="space-y-4">
+              {/* Opsi ditaruh di baris sendiri supaya label/input/select/tombol
+                  di bawahnya punya tinggi yang sama dan sejajar rapi. */}
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="nowebsite"
+                  checked={onlyNoWebsite}
+                  onCheckedChange={(v) => setOnlyNoWebsite(Boolean(v))}
+                />
+                <Label htmlFor="nowebsite" className="cursor-pointer text-sm font-normal">
+                  Hanya yang belum punya website
+                </Label>
+              </div>
+
+              <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
                 <div className="space-y-1.5">
                   <Label htmlFor="city">Kota</Label>
                   <Input
@@ -681,20 +703,18 @@ export function Prospecting() {
                     onChange={(e) => setCity(e.target.value)}
                     placeholder="cth: Cikarang"
                     autoComplete="off"
+                    className="h-10"
                   />
                   <datalist id="prospecting-cities">
                     {CITIES.map((c) => (
                       <option key={c} value={c} />
                     ))}
                   </datalist>
-                  <p className="text-[11px] text-muted-foreground">
-                    Ketik kota/kecamatan mana pun — daftar hanya saran.
-                  </p>
                 </div>
                 <div className="space-y-1.5">
                   <Label>Kategori Bisnis</Label>
                   <Select value={category} onValueChange={setCategory}>
-                    <SelectTrigger>
+                    <SelectTrigger className="h-10 w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -704,44 +724,33 @@ export function Prospecting() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="nowebsite"
-                      checked={onlyNoWebsite}
-                      onCheckedChange={(v) => setOnlyNoWebsite(Boolean(v))}
-                    />
-                    <Label htmlFor="nowebsite" className="cursor-pointer text-sm">
-                      Hanya yang belum punya website
-                    </Label>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={() => handleSearch()}
-                      disabled={loading || city.trim().length < 2}
-                      className="flex-1 gap-2"
-                    >
-                      {loading ? (
-                        <><RefreshCw className="h-4 w-4 animate-spin" /> Mencari...</>
-                      ) : (
-                        <><Search className="h-4 w-4" /> Cari Sekarang</>
-                      )}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => handleSearch(true)}
-                      disabled={loading || city.trim().length < 2}
-                      title="Abaikan cache 24 jam (memakai 1 kredit)"
-                      className="gap-2"
-                    >
-                      <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-                    </Button>
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    Tombol panah = paksa ambil data baru (1 kredit).
-                  </p>
+                <div className="flex gap-2 sm:col-span-2 lg:col-span-1">
+                  <Button
+                    onClick={() => handleSearch()}
+                    disabled={loading || city.trim().length < 2}
+                    className="h-10 flex-1 gap-2 lg:min-w-[150px]"
+                  >
+                    {loading ? (
+                      <><RefreshCw className="h-4 w-4 animate-spin" /> Mencari...</>
+                    ) : (
+                      <><Search className="h-4 w-4" /> Cari Sekarang</>
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleSearch(true)}
+                    disabled={loading || city.trim().length < 2}
+                    title="Abaikan cache 24 jam (memakai 1 kredit)"
+                    className="h-10 w-10 shrink-0 gap-2 px-0"
+                  >
+                    <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+                  </Button>
                 </div>
               </div>
+
+              <p className="text-[11px] text-muted-foreground">
+                Ketik kota/kecamatan mana pun — daftar hanya saran. Tombol panah = paksa ambil data baru (1 kredit).
+              </p>
             </CardContent>
           </Card>
 
@@ -895,12 +904,17 @@ export function Prospecting() {
                               {r.reviewCount ? <span className="font-normal text-muted-foreground">({r.reviewCount})</span> : null}
                             </span>
                           )}
-                          {r.phone && <span className="flex items-center gap-1"><MessageCircle className="h-3 w-3" />{r.phone}</span>}
+                          {r.phone && (
+                            <span className="flex items-center gap-1">
+                              <MessageCircle className="h-3 w-3" />
+                              {formatPhoneDisplay(r.phone)}
+                            </span>
+                          )}
                           {r.address && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{r.address}</span>}
                         </div>
                       </div>
                       <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                        {r.phone && (
+                        {toWaNumber(r.phone) !== "" && (
                           <Button
                             variant="ghost"
                             size="sm"
@@ -1058,7 +1072,7 @@ export function Prospecting() {
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {[
-                          r.phone,
+                          r.phone ? formatPhoneDisplay(r.phone) : null,
                           r.rating ? `⭐ ${r.rating}` : null,
                           r.address,
                         ].filter(Boolean).join(" · ")}

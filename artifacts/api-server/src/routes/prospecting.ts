@@ -9,6 +9,7 @@ import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { csvToRecords, type CsvRecord } from "../lib/csv";
 import { logger } from "../lib/logger";
+import { normalizePhone } from "../lib/phone";
 import { clientIp, rateLimit, sweepRateLimitBuckets } from "../lib/rate-limit";
 
 const OVERPASS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 jam — data bisnis lokal jarang berubah harian
@@ -265,17 +266,6 @@ function buildOverpassQuery(selectors: string[], lat: number, lon: number, radiu
   return `[out:json][timeout:30];(${union});out center 200;`;
 }
 
-/**
- * Canonical phone format = local `08…` form (same convention as Overpass data).
- * Accepts `08x`, `62x`, `+62x`, separators, spaces. Returns "" when unusable.
- */
-export function normalizePhone(raw: string): string {
-  if (!raw) return "";
-  let phone = raw.replace(/\s+/g, "").replace(/[^\d+]/g, "");
-  if (phone.startsWith("+62")) phone = "0" + phone.slice(3);
-  if (phone.startsWith("62") && phone.length > 8) phone = "0" + phone.slice(2);
-  return phone;
-}
 
 function extractPhone(tags: Record<string, string>): string {
   const raw = tags["phone"] || tags["contact:phone"] || tags["contact:mobile"] || tags["contact:whatsapp"] || "";

@@ -28,6 +28,8 @@ app.use(
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+// Raw CSV bodies (Content-Type: text/csv) arrive as strings for bulk import.
+app.use(express.text({ type: "text/csv", limit: "5mb" }));
 
 app.use("/api", router);
 

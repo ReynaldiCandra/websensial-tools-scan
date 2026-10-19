@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, prospectsTable, overpassCacheTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { csvToRecords, type CsvRecord } from "../lib/csv";
 
 const OVERPASS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 jam — data bisnis lokal jarang berubah harian
 
@@ -57,13 +58,21 @@ function buildOverpassQuery(tags: string, lat: number, lon: number, radius: numb
   return `[out:json][timeout:25];(node${tags}(around:${radius},${lat},${lon});way${tags}(around:${radius},${lat},${lon}););out center 50;`;
 }
 
-function extractPhone(tags: Record<string, string>): string {
-  const raw = tags["phone"] || tags["contact:phone"] || tags["contact:mobile"] || "";
+/**
+ * Canonical phone format = local `08…` form (same convention as Overpass data).
+ * Accepts `08x`, `62x`, `+62x`, separators, spaces. Returns "" when unusable.
+ */
+export function normalizePhone(raw: string): string {
   if (!raw) return "";
   let phone = raw.replace(/\s+/g, "").replace(/[^\d+]/g, "");
   if (phone.startsWith("+62")) phone = "0" + phone.slice(3);
-  if (phone.startsWith("62")) phone = "0" + phone.slice(2);
+  if (phone.startsWith("62") && phone.length > 8) phone = "0" + phone.slice(2);
   return phone;
+}
+
+function extractPhone(tags: Record<string, string>): string {
+  const raw = tags["phone"] || tags["contact:phone"] || tags["contact:mobile"] || "";
+  return normalizePhone(raw);
 }
 
 const SearchQuerySchema = z.object({
@@ -200,25 +209,199 @@ const BulkImportSchema = z.object({
   ),
 });
 
+/** Largest accepted payload per request — browser extensions can export a lot. */
+const MAX_IMPORT_ROWS = 500;
+
+/**
+ * Column aliases for CSV header detection. Covers exports from G Maps Leads
+ * Finder / Maps Business Finder style extensions (English + Indonesian labels)
+ * and the manual sheet layout documented in the CRM UI.
+ */
+const CSV_ALIASES: Record<string, string[]> = {
+  businessName: ["business name", "businessname", "name", "title", "company", "nama bisnis", "nama"],
+  phone: ["phone", "phone number", "phone_1", "phones", "no hp", "nomor hp", "no. hp", "telepon", "nomor telepon", "contact number", "kontak"],
+  website: ["website", "website url", "web site", "situs web", "url website", "web"],
+  mapsUrl: ["google maps", "google maps url", "google maps link", "maps url", "maps link", "link maps", "gmaps url", "google maps profile", "plus code url"],
+  address: ["address", "alamat", "alamat lengkap"],
+  category: ["category", "category type", "type", "kategori", "jenis"],
+  rating: ["rating", "skor"],
+};
+
+interface ParsedProspect {
+  businessName: string;
+  phone: string;
+  address: string | null;
+  category: string;
+  hasWebsite: boolean;
+  mapsUrl: string | null;
+}
+
+function willImportRecord(record: CsvRecord): ParsedProspect | null {
+  const businessName = (record.businessName ?? "").trim();
+  if (!businessName) return null;
+
+  const phone = normalizePhone(record.phone ?? "");
+  const mapsUrl = record.mapsUrl ? record.mapsUrl.trim() : null;
+  const website = record.website ? record.website.trim() : "";
+
+  return {
+    businessName,
+    phone,
+    address: record.address ? record.address.trim() : null,
+    category: record.category ? record.category.trim() : "Umum",
+    hasWebsite: website !== "",
+    mapsUrl: mapsUrl || null,
+  };
+}
+
+/**
+ * Insert candidates into `prospects`, skipping duplicates.
+ *
+ * Dedup keys are the normalized phone number and the maps URL, both inside the
+ * incoming batch and against rows already in the database — re-exporting the
+ * same area from the browser extension must not create duplicate leads.
+ */
+async function insertProspects(candidates: ParsedProspect[]): Promise<{
+  importedIds: number[];
+  skippedInBatch: number;
+  skippedExisting: number;
+}> {
+  const batchPhoneKeys = new Set<string>();
+  const batchUrlKeys = new Set<string>();
+
+  const existingRows = await db
+    .select({ phone: prospectsTable.phone, mapsUrl: prospectsTable.mapsUrl })
+    .from(prospectsTable);
+
+  const existingPhoneKeys = new Set(
+    existingRows.map((row) => normalizePhone(row.phone ?? "")).filter((phone) => phone && phone !== "-"),
+  );
+  const existingUrlKeys = new Set(
+    existingRows.map((row) => row.mapsUrl?.trim().toLowerCase()).filter((url): url is string => !!url),
+  );
+
+  const values: {
+    businessName: string;
+    phone: string;
+    address: string | null;
+    category: string;
+    source: "gmaps";
+    hasWebsite: boolean;
+    status: "belum_dihubungi";
+    mapsUrl: string | null;
+  }[] = [];
+
+  let skippedInBatch = 0;
+  let skippedExisting = 0;
+
+  for (const candidate of candidates) {
+    const phoneKey = candidate.phone !== "" ? candidate.phone : null;
+    const urlKey = candidate.mapsUrl ? candidate.mapsUrl.toLowerCase() : null;
+
+    // Both keys empty → nothing to dedupe on, always import.
+    const dedupable = phoneKey !== null || urlKey !== null;
+
+    if (dedupable) {
+      if (phoneKey !== null && (existingPhoneKeys.has(phoneKey) || batchPhoneKeys.has(phoneKey))) {
+        skippedInBatch += batchPhoneKeys.has(phoneKey) ? 1 : 0;
+        skippedExisting += batchPhoneKeys.has(phoneKey) ? 0 : 1;
+        continue;
+      }
+      if (urlKey !== null && (existingUrlKeys.has(urlKey) || batchUrlKeys.has(urlKey))) {
+        skippedInBatch += batchUrlKeys.has(urlKey) ? 1 : 0;
+        skippedExisting += batchUrlKeys.has(urlKey) ? 0 : 1;
+        continue;
+      }
+    }
+
+    if (phoneKey !== null) batchPhoneKeys.add(phoneKey);
+    if (urlKey !== null) batchUrlKeys.add(urlKey);
+
+    values.push({
+      businessName: candidate.businessName,
+      phone: candidate.phone || "-",
+      address: candidate.address,
+      category: candidate.category,
+      source: "gmaps",
+      hasWebsite: candidate.hasWebsite,
+      status: "belum_dihubungi",
+      mapsUrl: candidate.mapsUrl,
+    });
+  }
+
+  if (values.length === 0) {
+    return { importedIds: [], skippedInBatch, skippedExisting };
+  }
+
+  const inserted = await db.insert(prospectsTable).values(values).returning({ id: prospectsTable.id });
+  return { importedIds: inserted.map((row) => row.id), skippedInBatch, skippedExisting };
+}
+
 router.post("/prospecting/bulk-import", async (req, res) => {
   try {
+    //--------- Input: either the existing JSON contract, or raw CSV ---------
+    // CSV can arrive as Content-Type: text/csv (raw string body, parsed by
+    // express.text) or as { csv: "..." } inside a JSON envelope. Header-style
+    // exports from browser extensions are auto-mapped; headerless CSV falls
+    // back to the positional layout documented in the CRM UI.
+    const contentType = String(req.headers["content-type"] ?? "");
+    const csvText =
+      contentType.includes("text/csv")
+        ? (typeof req.body === "string" ? req.body : "")
+        : typeof req.body?.csv === "string"
+          ? req.body.csv
+          : "";
+
+    let candidates: ParsedProspect[];
+    let truncated = false;
+
+    if (csvText.trim() !== "") {
+      const records = csvToRecords(csvText, CSV_ALIASES);
+      const parsedRows = records.map(willImportRecord);
+      const invalid = parsedRows.filter((row) => row === null).length;
+      candidates = parsedRows.filter((row): row is ParsedProspect => row !== null);
+
+      if (candidates.length > MAX_IMPORT_ROWS) {
+        truncated = true;
+        candidates = candidates.slice(0, MAX_IMPORT_ROWS);
+      }
+
+      const insertResult = await insertProspects(candidates);
+      return res.status(201).json({
+        imported: insertResult.importedIds.length,
+        ids: insertResult.importedIds,
+        skippedDuplicatesInBatch: insertResult.skippedInBatch + insertResult.skippedExisting,
+        skippedExisting: insertResult.skippedExisting,
+        invalidRows: invalid,
+        truncated,
+      });
+    }
+
     const parsed = BulkImportSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
 
-    const values = parsed.data.prospects.map((p) => ({
-      businessName: p.businessName,
-      phone: p.phone || "-",
+    candidates = parsed.data.prospects.map((p) => ({
+      businessName: p.businessName.trim(),
+      phone: normalizePhone(p.phone),
       address: p.address ?? null,
-      category: p.category,
-      source: "gmaps" as const,
+      category: p.category || "Umum",
       hasWebsite: p.hasWebsite,
-      status: "belum_dihubungi" as const,
       mapsUrl: p.mapsUrl ?? null,
     }));
 
-    const inserted = await db.insert(prospectsTable).values(values).returning({ id: prospectsTable.id });
+    if (candidates.length > MAX_IMPORT_ROWS) {
+      truncated = true;
+      candidates = candidates.slice(0, MAX_IMPORT_ROWS);
+    }
 
-    return res.status(201).json({ imported: inserted.length, ids: inserted.map((r) => r.id) });
+    const insertResult = await insertProspects(candidates);
+    return res.status(201).json({
+      imported: insertResult.importedIds.length,
+      ids: insertResult.importedIds,
+      skippedDuplicatesInBatch: insertResult.skippedInBatch + insertResult.skippedExisting,
+      skippedExisting: insertResult.skippedExisting,
+      truncated,
+    });
   } catch (err) {
     req.log.error({ err }, "Bulk import error");
     return res.status(500).json({ error: "Import failed" });

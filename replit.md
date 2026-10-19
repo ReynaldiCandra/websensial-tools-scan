@@ -19,6 +19,8 @@ Platform all-in-one untuk web developer / digital agency Indonesia: temukan bisn
 - Frontend: React + Vite (served at `/`)
 - DB: PostgreSQL + Drizzle ORM
 - Validation: Zod (`zod/v4`), `drizzle-zod`
+- API auth: `ADMIN_API_KEY` (server) — semua endpoint kecuali `/healthz` menuntut header `x-api-key` / `Authorization: Bearer`. Frontend mengirim `VITE_API_KEY` sebagai `x-api-key`.
+- CSV import: otomatis mendeteksi baris header dari ekspor ekstensi browser (G Maps Leads Finder, dll) dan mendupe by nomor telepon ternormalisasi + URL maps (dalam batch & terhadap database).
 - API codegen: Orval (from OpenAPI spec)
 - Build: esbuild (CJS bundle)
 
@@ -43,7 +45,7 @@ Platform all-in-one untuk web developer / digital agency Indonesia: temukan bisn
 ## Product
 
 - **Dashboard** — Pipeline funnel counts, revenue summary, recent activity feed
-- **Prospecting Tool** — Search bisnis via OpenStreetMap (15 kota, 15 kategori) + CSV import + panduan Google Maps
+- **Prospecting Tool** — Search bisnis via OpenStreetMap (15 kota, 15 kategori) + CSV import (auto-detect kolom ekspor ekstensi G Maps, dedupe otomatis) + panduan Google Maps
 - **Prospects** — CRUD prospect/lead dengan filter by status, kategori, search
 - **Pipeline** — Kanban view: Belum Dihubungi → Dihubungi → Demo → Deal → Invoice → Selesai
 - **WA Templates** — 5 template default (Initial, Follow-up, Demo, Proposal, Closing) dengan merge variables
@@ -83,6 +85,11 @@ Use the Deploy button in Replit. Full-stack with PostgreSQL, no extra config nee
 - Run `pnpm --filter @workspace/db run push` once
 
 ## Gotchas
+
+- `ADMIN_API_KEY` wajib di produksi (`NODE_ENV=production`): tanpa key, server menolak melayani endpoint CRM (fail closed, 503). Di development boleh kosong (unauthenticated + warning).
+- `VITE_API_KEY` (frontend) harus sama nilainya dengan `ADMIN_API_KEY` (server).
+- Karena kunci dikirim dari bundle browser (Vite), ini penghalang scanner/bot — bukan pengganti user auth penuh untuk multi-user.
+- Import CSV akan skip baris duplikat (telepon ternormalisasi atau URL maps sudah ada di database/batch) dan melaporkan jumlah skip di response (`skippedDuplicatesInBatch`, `skippedExisting`, `invalidRows`, `truncated`).
 
 - Always run `pnpm --filter @workspace/api-spec run codegen` after changing `openapi.yaml`
 - Always run `pnpm --filter @workspace/db run push` after adding/changing schema files

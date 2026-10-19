@@ -18,6 +18,8 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { apiFetch } from "@/lib/api-client";
+import { parseBusinessCsv } from "@/lib/csv";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -74,7 +76,7 @@ export function Prospecting() {
 
     try {
       const params = new URLSearchParams({ city, category, onlyNoWebsite: String(onlyNoWebsite) });
-      const res = await fetch(`${BASE}/api/prospecting/search?${params}`);
+      const res = await apiFetch(`/api/prospecting/search?${params}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Search failed");
       setResults(json.results);
@@ -110,7 +112,7 @@ export function Prospecting() {
 
     setImporting(true);
     try {
-      const res = await fetch(`${BASE}/api/prospecting/bulk-import`, {
+      const res = await apiFetch(`/api/prospecting/bulk-import`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -126,7 +128,12 @@ export function Prospecting() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
-      toast({ title: `${json.imported} bisnis berhasil diimport ke pipeline!` });
+      const skipped =
+        (json.skippedDuplicatesInBatch ?? 0) + (json.skippedExisting ?? 0);
+      toast({
+        title: `${json.imported} bisnis berhasil diimport ke pipeline!`,
+        description: skipped > 0 ? `${skipped} duplikat dilewati otomatis.` : undefined,
+      });
       navigate("/prospects");
     } catch (e: unknown) {
       toast({ title: "Import gagal", description: (e as Error).message, variant: "destructive" });
@@ -135,24 +142,20 @@ export function Prospecting() {
     }
   };
 
-  // CSV Parser
+  // CSV Parser — auto-maps header exports from browser extensions, and falls
+  // back to the positional layout (name, phone, address, category, mapsUrl).
   const parseCSV = (text: string) => {
-    const lines = text.trim().split("\n");
-    const parsed: SearchResult[] = [];
-    for (const line of lines) {
-      const cols = line.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
-      if (!cols[0]) continue;
-      parsed.push({
-        name: cols[0] || "",
-        phone: cols[1] || "",
-        address: cols[2] || null,
-        category: cols[3] || "Umum",
-        hasWebsite: false,
-        website: null,
-        mapsUrl: cols[4] || null,
-        osm_id: Math.random(),
-      });
-    }
+    const businesses = parseBusinessCsv(text);
+    const parsed: SearchResult[] = businesses.map((b, i) => ({
+      name: b.name,
+      phone: b.phone,
+      address: b.address,
+      category: b.category,
+      hasWebsite: b.hasWebsite,
+      website: null,
+      mapsUrl: b.mapsUrl,
+      osm_id: i,
+    }));
     setCsvParsed(parsed);
     setCsvSelected(new Set(parsed.map((_, i) => i)));
   };
@@ -358,7 +361,9 @@ export function Prospecting() {
             <CardHeader className="pb-4">
               <CardTitle className="text-base">Import dari CSV</CardTitle>
               <CardDescription>
-                Paste data CSV atau dari Google Sheets. Format: Nama Bisnis, No HP, Alamat, Kategori, Link Maps
+                Paste CSV dari ekstensi G Maps Leads Finder / Maps Business Finder atau Google Sheets — kolom
+                terdeteksi otomatis dari baris header. Tanpa header, urutan kolom: Nama Bisnis, No HP, Alamat, Kategori, Link Maps.
+                Baris yang punya website tetap diimpor (segmen redesign).
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -371,7 +376,7 @@ export function Prospecting() {
                     className="h-6 text-xs"
                     onClick={() => {
                       setCsvText(
-                        `Warung Pak Joko,081234567890,Jl. Merdeka No. 5 Jakarta,Kuliner,\nBengkel Bu Tini,082345678901,Jl. Sudirman No. 12 Bandung,Otomotif,`
+                        `Nama Bisnis,No HP,Alamat,Kategori,Website,Link Maps\nWarung Pak Joko,081234567890,Jl. Merdeka No. 5 Jakarta,Kuliner,,https://maps.google.com/?q=-6.2,106.8\nKlinik Sejahtera,6281234567890,Jl. Sudirman No. 12 Bandung,Kesehatan,https://kliniksejahtera.id,https://maps.google.com/?q=-6.9,107.6`
                       );
                     }}
                   >
@@ -379,7 +384,7 @@ export function Prospecting() {
                   </Button>
                 </div>
                 <Textarea
-                  placeholder={"Nama Bisnis,081234567890,Alamat,Kategori,Link Maps\nWarung Pak Joko,081234567890,Jl. Merdeka,Kuliner,"}
+                  placeholder={"Paste langsung hasil export ekstensi G Maps di sini…\n\nAtau format manual:\nNama Bisnis,No HP,Alamat,Kategori,Link Maps\nWarung Pak Joko,081234567890,Jl. Merdeka,Kuliner,"}
                   rows={6}
                   value={csvText}
                   onChange={(e) => setCsvText(e.target.value)}
@@ -526,11 +531,13 @@ export function Prospecting() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="text-sm text-muted-foreground space-y-2">
-                <p>Buka Google Sheets dan buat kolom:</p>
+                <p>Cara tercepat: pakai ekstensi G Maps Leads Finder / Maps Business Finder di Chrome, jalankan di hasil pencarian Maps, lalu export CSV.</p>
+                <p>Filter di spreadsheet: cari baris <strong>kolom Website kosong</strong> — itu target utama Anda. Tapi baris ber-website jangan dibuang: bagus untuk penawaran redesign.</p>
+                <p>Atau buat Google Sheets manual dengan kolom:</p>
                 <div className="bg-muted rounded p-2 font-mono text-xs">
-                  Nama Bisnis | No HP | Alamat | Kategori | Link Maps
+                  Nama Bisnis | No HP | Alamat | Kategori | Website | Link Maps
                 </div>
-                <p>Isi satu baris per bisnis. Minimal nama dan nomor HP.</p>
+                <p>Minimal nama dan nomor HP. Duplikat dideteksi otomatis saat import.</p>
               </CardContent>
             </Card>
 

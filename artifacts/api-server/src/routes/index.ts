@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { requireApiKey } from "../middlewares/api-key";
 import healthRouter from "./health";
 import dashboardRouter from "./dashboard";
 import prospectsRouter from "./prospects";
@@ -13,6 +14,9 @@ import previewsRouter from "./previews";
 const router: IRouter = Router();
 
 router.use(healthRouter);
+// Every route below (dashboard, prospects, invoices, previews, pros kek nging, ..)
+// is internal CRM data — gate it all behind the API key.
+router.use(requireApiKey);
 router.use(dashboardRouter);
 router.use(prospectsRouter);
 router.use(activitiesRouter);

@@ -12,8 +12,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+import { apiFetch } from "@/lib/api-client";
 
 interface Props {
   prospectId: number;
@@ -52,7 +51,7 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
   const [copied, setCopied] = useState<string | null>(null);
 
   const loadPreviews = async () => {
-    const res = await fetch(`${BASE}/api/previews/prospect/${prospectId}`);
+    const res = await apiFetch(`/api/previews/prospect/${prospectId}`);
     if (res.ok) {
       const data = await res.json();
       setPreviews(data);
@@ -67,7 +66,7 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
   const generate = async () => {
     setGenerating(true);
     try {
-      const res = await fetch(`${BASE}/api/previews`, {
+      const res = await apiFetch(`/api/previews`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

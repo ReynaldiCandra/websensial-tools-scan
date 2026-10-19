@@ -14,8 +14,10 @@ import previewsRouter from "./previews";
 const router: IRouter = Router();
 
 router.use(healthRouter);
-// Every route below (dashboard, prospects, invoices, previews, pros kek nging, ..)
-// is internal CRM data — gate it all behind the API key.
+// Every route below (dashboard, prospects, invoices, templates, prospecting,
+// previews, …) is internal CRM data — gate it all behind the API key.
+// Exception: GET /preview/:token inside previewsRouter stays public
+// (it is the prospect-facing demo share link).
 router.use(requireApiKey);
 router.use(dashboardRouter);
 router.use(prospectsRouter);

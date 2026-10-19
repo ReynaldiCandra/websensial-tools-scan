@@ -13,6 +13,16 @@ function timingSafeEqualStrings(a: string, b: string): boolean {
 }
 
 /**
+ * Public route that must stay reachable without an API key: the prospect demo
+ * share link `/preview/:token` (24-char hex token) sent to business owners via
+ * WhatsApp. Everything else stays gated.
+ */
+function isPublicShareLink(req: Request): boolean {
+  if (req.method !== "GET") return false;
+  return /^\/(api\/)?preview\/[0-9a-fA-F]{24}$/.test(req.path);
+}
+
+/**
  * Auth gate for every API route except /healthz.
  *
  * Behaviour:
@@ -21,8 +31,11 @@ function timingSafeEqualStrings(a: string, b: string): boolean {
  * - `ADMIN_API_KEY` unset    → dev convenience: request allowed, but a warning
  *   is logged. In production (`NODE_ENV=production`) the server refuses to
  *   serve instead of leaking CRM data (fail closed).
+ * - Exception: GET `/preview/:token` (prospect demo share link) stays public.
  */
 export function requireApiKey(req: Request, res: Response, next: NextFunction): Response | void {
+  if (isPublicShareLink(req)) return next();
+
   const expected = process.env.ADMIN_API_KEY?.trim();
 
   if (!expected) {

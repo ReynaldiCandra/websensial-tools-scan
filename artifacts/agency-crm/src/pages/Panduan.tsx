@@ -64,8 +64,11 @@ export function Panduan() {
               <CardTitle className="text-base">Menu "Cari Prospek" — sumber lead Anda</CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground space-y-3">
-              <p><strong className="text-foreground">Cara A — Import CSV (disarankan):</strong> pakai ekstensi Chrome seperti G Maps Leads Finder / GeoLeadScraper di Google Maps, export CSV, lalu paste di tab <em>Import CSV</em>. Kolom terdeteksi otomatis — termasuk kolom Website, Rating, Reviews, sesuai ekstensi apa pun. Duplikat otomatis dilewati. Baris <strong>tanpa website</strong> = target utama; baris ber-website tetap diimpor untuk penawaran redesign.</p>
-              <p><strong className="text-foreground">Cara B — Cari Otomatis:</strong> pilih kota + kategori, tombol Cari — data dari OpenStreetMap (gratis). Cepat tapi ketersediaan nomor HP lebih sedikit dari data Google.</p>
+              <p><strong className="text-foreground">Cara A — Cari Otomatis (utama):</strong> pilih <em>Kota</em> + <em>Kategori Bisnis</em>, biarkan centang <em>Hanya yang belum punya website</em>, lalu klik <strong>Cari Sekarang</strong>. Data diambil dari Google Maps, jadi setiap baris berisi nama bisnis, rating + jumlah review, nomor HP, alamat, status website, tombol <strong>WA</strong>, dan link Maps untuk verifikasi.</p>
+              <p><strong className="text-foreground">Cara B — Import CSV (cadangan):</strong> kalau Anda sudah punya export dari ekstensi Chrome seperti G Maps Leads Finder / GeoLeadScraper, paste di tab <em>Import CSV</em>. Kolom terdeteksi otomatis (Website, Rating, Reviews), duplikat dilewati. Baris <strong>tanpa website</strong> = target utama; baris ber-website tetap diimpor untuk penawaran redesign.</p>
+              <p><strong className="text-foreground">20 hasil per pencarian.</strong> Untuk kota besar, ganti kategori atau ulangi dengan kategori terkait agar cakupannya lebih luas. Hasil terakhir tetap tersimpan saat Anda pindah menu — ada penanda "disimpan" beserta jamnya, jadi tidak perlu mencari ulang.</p>
+              <p><strong className="text-foreground">Langkah setelah muncul hasil:</strong> centang bisnis yang layak → <strong>Import N ke Pipeline</strong>. Setelah itu lanjut ke menu <em>Pipeline</em> dan kirim WA dari kartu prospek.</p>
+              <p><strong className="text-foreground">Kuota:</strong> panel <em>Kuota pencarian</em> di atas filter menampilkan sisa kredit. Akun Serper baru mendapat <strong>2.500 pencarian gratis</strong>; satu pencarian tanpa cache = 1 kredit, sedangkan kota+kategori yang sama dalam 24 jam diambil dari cache dan <strong>tidak</strong> memotong kredit. Kalau kredit habis, pencarian otomatis pindah ke OpenStreetMap (gratis, tapi rating dan nomor HP sering kosong). Saldo resmi selalu bisa dicek lewat tautan <em>Kredit resmi di Serper</em>.</p>
               <p><strong className="text-foreground">Target harian:</strong> 20–30 prospek baru/hari sudah cukup menyulap pipeline terisi konsisten.</p>
             </CardContent>
           </Card>
@@ -169,6 +172,8 @@ export function Panduan() {
             <li>Maksimal ~30 WA baru per hari; gunakanWA Business dan personalisasi dua-tiga kalimat pertama.</li>
             <li>Follow-up 2×: H+2 dan H+7. Setelah itu tandai "Dihubungi" dan kembali nanti.</li>
             <li>Deal → buat Invoice di hari yang sama, kirim link pembayaran, tandai status Invoice.</li>
+            <li>Pantau panel <em>Kuota pencarian</em> sebelum sesi prospecting; ulangi kota+kategori yang sama dalam 24 jam agar tidak memakan kredit baru.</li>
+            <li>Nomor di Google Maps adalah nomor telepon bisnis — cek dulu apakah aktif di WhatsApp sebelum kirim pesan panjang.</li>
           </ul>
         </CardContent>
       </Card>

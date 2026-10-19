@@ -25,6 +25,7 @@ before(async () => {
 afterEach(() => {
   delete process.env.SERPER_API_KEY;
   delete process.env.OUTSCRAPER_API_KEY;
+  delete process.env.SERPER_CREDIT_QUOTA;
   globalThis.fetch = originalFetch;
 });
 
@@ -383,5 +384,43 @@ describe("GET /api/prospecting/search", () => {
     assert.equal(res.status, 400);
     assert.equal(res.body.error, "City 'Atlantis' not supported");
     assert.equal(called, false);
+  });
+});
+
+describe("GET /api/prospecting/quota", () => {
+  it("reports the free Serper allowance", async () => {
+    process.env.SERPER_API_KEY = "test-serper-key";
+
+    const res = await request(app)
+      .get("/api/prospecting/quota")
+      .set("x-api-key", API_KEY);
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.provider, "serper");
+    assert.equal(res.body.configured, true);
+    assert.equal(res.body.quota, 2500);
+    // Tests run without DATABASE_URL, so recorded usage cannot be read.
+    assert.equal(res.body.used, null);
+    assert.equal(res.body.remaining, null);
+    assert.equal(res.body.fallbackProvider, "osm");
+  });
+
+  it("accepts a custom quota and reports the fallback provider", async () => {
+    process.env.OUTSCRAPER_API_KEY = "test-outscraper-key";
+    process.env.SERPER_CREDIT_QUOTA = "10000";
+
+    const res = await request(app)
+      .get("/api/prospecting/quota")
+      .set("x-api-key", API_KEY);
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.configured, false);
+    assert.equal(res.body.quota, 10000);
+    assert.equal(res.body.fallbackProvider, "outscraper");
+  });
+
+  it("requires the API key", async () => {
+    const res = await request(app).get("/api/prospecting/quota");
+    assert.equal(res.status, 401);
   });
 });

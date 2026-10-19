@@ -5,13 +5,17 @@ import {
   overpassCacheTable,
   prospectsTable,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { csvToRecords, type CsvRecord } from "../lib/csv";
 import { logger } from "../lib/logger";
 
 const OVERPASS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 jam — data bisnis lokal jarang berubah harian
 const CACHE_RETRY_AFTER_FAILURE_MS = 60 * 1000;
+
+// Usage counters reuse the cache table as a namespaced key-value store, so no
+// extra migration is needed. Each entry is `{ count: number }`.
+const USAGE_KEY_PREFIX = "usage::";
 
 // A paused/deleted database should not add a connection attempt to every
 // search. After one failure, skip the cache for a minute before retrying.
@@ -41,6 +45,9 @@ const PHOTON_TIMEOUT_MS = 20_000;
 const SERPER_ENDPOINT = "https://google.serper.dev/maps";
 const SERPER_TIMEOUT_MS = 20_000;
 const SERPER_LIMIT = 20;
+// Free allowance of a fresh Serper account. Once it runs out the dashboard
+// shows a warning, and searches still work through the OSM fallback.
+const SERPER_FREE_CREDITS = 2_500;
 
 // Outscraper provides the same Google Maps data and stays supported as a
 // fallback for accounts that already have credits. Both are optional: without
@@ -402,6 +409,56 @@ async function writeProspectCache(
       { message: err instanceof Error ? err.message : String(err) },
       "Prospecting cache write failed; ignoring",
     );
+  }
+}
+
+/**
+ * Count one billable Google Maps request. Only uncached searches reach this
+ * point, so the counter matches the credits Serper actually spends.
+ * Failures are logged and ignored: usage tracking must never break a search.
+ */
+async function recordProviderUsage(provider: string): Promise<void> {
+  if (!isDatabaseConfigured) return;
+
+  try {
+    await db.execute(sql`
+      INSERT INTO overpass_cache (cache_key, result)
+      VALUES (${USAGE_KEY_PREFIX + provider}, ${JSON.stringify({ count: 1 })}::jsonb)
+      ON CONFLICT (cache_key) DO UPDATE
+      SET result = jsonb_build_object(
+            'count',
+            COALESCE((overpass_cache.result ->> 'count')::int, 0) + 1
+          ),
+          created_at = now()
+    `);
+  } catch (err) {
+    logger.warn(
+      { message: err instanceof Error ? err.message : String(err) },
+      "Failed to record provider usage; ignoring",
+    );
+  }
+}
+
+/** Returns null when usage cannot be read (no database / DB error). */
+async function readProviderUsage(provider: string): Promise<number | null> {
+  if (!isDatabaseConfigured) return null;
+
+  try {
+    const [row] = await db
+      .select()
+      .from(overpassCacheTable)
+      .where(eq(overpassCacheTable.cacheKey, USAGE_KEY_PREFIX + provider));
+
+    if (!row) return 0;
+
+    const count = Number((row.result as { count?: unknown } | null)?.count ?? 0);
+    return Number.isFinite(count) ? count : 0;
+  } catch (err) {
+    logger.warn(
+      { message: err instanceof Error ? err.message : String(err) },
+      "Failed to read provider usage",
+    );
+    return null;
   }
 }
 
@@ -798,6 +855,31 @@ router.get("/prospecting/categories", (_req, res) => {
   return res.json(Object.keys(CATEGORY_TAGS));
 });
 
+/**
+ * Credit monitor for the Google Maps provider. `used` counts searches this
+ * dashboard performed (cached results cost nothing); the authoritative balance
+ * always lives in the Serper dashboard, so the UI links there too.
+ */
+router.get("/prospecting/quota", async (_req, res) => {
+  const quotaFromEnv = Number(process.env.SERPER_CREDIT_QUOTA);
+  const quota =
+    Number.isFinite(quotaFromEnv) && quotaFromEnv > 0
+      ? Math.floor(quotaFromEnv)
+      : SERPER_FREE_CREDITS;
+
+  const used = await readProviderUsage("serper");
+  const remaining = used === null ? null : Math.max(0, quota - used);
+
+  return res.json({
+    provider: "serper",
+    configured: Boolean(process.env.SERPER_API_KEY?.trim()),
+    quota,
+    used,
+    remaining,
+    fallbackProvider: process.env.OUTSCRAPER_API_KEY?.trim() ? "outscraper" : "osm",
+  });
+});
+
 router.get("/prospecting/search", async (req, res) => {
   try {
     const parsed = SearchQuerySchema.safeParse(req.query);
@@ -858,6 +940,7 @@ router.get("/prospecting/search", async (req, res) => {
         const providerResults = await provider.fetch(city, category);
         if (providerResults.length > 0) {
           await writeProspectCache(provider.cacheKey, providerResults);
+          await recordProviderUsage(provider.name);
           const results = filterByWebsite(providerResults);
           return res.json({
             total: results.length,

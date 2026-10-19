@@ -1,8 +1,8 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useLocation } from "wouter";
 import {
   Search, MapPin, Globe, CheckCircle2, Star,
-  RefreshCw, AlertTriangle, ExternalLink, MessageCircle, ChevronDown, X, Upload, FileText, WifiOff, Download
+  RefreshCw, AlertTriangle, ExternalLink, MessageCircle, ChevronDown, X, Upload, FileText, WifiOff, Download, Gauge
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -62,6 +62,36 @@ const CATEGORIES = [
   "Jasa Umum", "Gym & Kebugaran", "Pet Shop & Hewan", "Servis Elektronik",
 ];
 
+/** Last search is kept in localStorage so changing menu does not lose it. */
+const LAST_SEARCH_KEY = "websensial:prospecting:last-search:v1";
+
+interface QuotaInfo {
+  configured: boolean;
+  quota: number;
+  used: number | null;
+  remaining: number | null;
+}
+
+interface StoredSearch {
+  city: string;
+  category: string;
+  onlyNoWebsite: boolean;
+  results: SearchResult[];
+  searchMeta: { city: string; category: string; total: number; source?: string };
+  savedAt: string;
+}
+
+function formatSavedAt(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("id-ID", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 interface SearchResult {
   name: string;
   phone: string;
@@ -95,6 +125,10 @@ export function Prospecting() {
     source?: string;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastSearchAt, setLastSearchAt] = useState<string | null>(null);
+
+  // Credit monitor for the Google Maps provider (Serper).
+  const [quota, setQuota] = useState<QuotaInfo | null>(null);
 
   // Selection state
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -104,6 +138,47 @@ export function Prospecting() {
   const [csvText, setCsvText] = useState("");
   const [csvParsed, setCsvParsed] = useState<SearchResult[]>([]);
   const [csvSelected, setCsvSelected] = useState<Set<number>>(new Set());
+
+  const loadQuota = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/prospecting/quota");
+      if (!res.ok) return;
+      const json = (await res.json()) as Record<string, unknown>;
+      setQuota({
+        configured: Boolean(json.configured),
+        quota: Number(json.quota ?? 0),
+        used: json.used === null || json.used === undefined ? null : Number(json.used),
+        remaining:
+          json.remaining === null || json.remaining === undefined
+            ? null
+            : Number(json.remaining),
+      });
+    } catch {
+      // Monitoring must never block searching.
+    }
+  }, []);
+
+  // Restore the previous result set (and refresh the quota) when the page is
+  // opened again, so navigating to another menu no longer loses the search.
+  useEffect(() => {
+    void loadQuota();
+
+    try {
+      const raw = localStorage.getItem(LAST_SEARCH_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as StoredSearch;
+      if (!Array.isArray(saved.results) || !saved.searchMeta) return;
+
+      setCity(saved.city);
+      setCategory(saved.category);
+      setOnlyNoWebsite(saved.onlyNoWebsite);
+      setResults(saved.results);
+      setSearchMeta(saved.searchMeta);
+      setLastSearchAt(saved.savedAt ?? null);
+    } catch {
+      // Storage blocked or corrupted: start with a clean page.
+    }
+  }, [loadQuota]);
 
   const handleSearch = useCallback(async () => {
     setLoading(true);
@@ -123,13 +198,33 @@ export function Prospecting() {
       if (!Array.isArray(json.results)) {
         throw new Error("Format respons pencarian tidak valid. Coba lagi.");
       }
-      setResults(json.results as SearchResult[]);
-      setSearchMeta({
+      const nextMeta = {
         city: String(json.city ?? city),
         category: String(json.category ?? category),
         total: Number(json.total ?? 0),
         source: typeof json.source === "string" ? json.source : undefined,
-      });
+      };
+      const savedAt = new Date().toISOString();
+
+      setResults(json.results as SearchResult[]);
+      setSearchMeta(nextMeta);
+      setLastSearchAt(savedAt);
+
+      try {
+        localStorage.setItem(
+          LAST_SEARCH_KEY,
+          JSON.stringify({
+            city,
+            category,
+            onlyNoWebsite,
+            results: json.results as SearchResult[],
+            searchMeta: nextMeta,
+            savedAt,
+          } satisfies StoredSearch),
+        );
+      } catch {
+        // Storage full or disabled: the in-memory result stays on screen.
+      }
     } catch (e: unknown) {
       const message =
         e instanceof TypeError
@@ -138,8 +233,10 @@ export function Prospecting() {
       setError(message || "Pencarian gagal. Coba lagi.");
     } finally {
       setLoading(false);
+      // Every uncached search consumes one credit; refresh the counter.
+      void loadQuota();
     }
-  }, [city, category, onlyNoWebsite]);
+  }, [city, category, onlyNoWebsite, loadQuota]);
 
   const toggleSelect = (idx: number) => {
     setSelected((prev) => {
@@ -238,6 +335,48 @@ export function Prospecting() {
           Cari bisnis tanpa website di kota pilihan, lalu import langsung ke pipeline.
         </p>
       </div>
+
+      <Card className={quota?.configured ? "border-primary/30 bg-primary/5" : undefined}>
+        <CardContent className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-3 text-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <Gauge className="h-4 w-4 shrink-0 text-primary" />
+            <span className="font-medium">Kuota pencarian</span>
+            {quota?.configured ? (
+              <span className="text-muted-foreground">
+                {quota.remaining === null ? (
+                  "pemakaian belum bisa dibaca dari database"
+                ) : (
+                  <>
+                    sisa{" "}
+                    <strong className="text-foreground">
+                      {quota.remaining.toLocaleString("id-ID")}
+                    </strong>{" "}
+                    dari {quota.quota.toLocaleString("id-ID")} pencarian
+                  </>
+                )}
+                {quota.used !== null && (
+                  <span className="ml-2 text-xs">
+                    · {quota.used.toLocaleString("id-ID")} terpakai oleh dashboard ini
+                  </span>
+                )}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">
+                OpenStreetMap aktif (tanpa batas). Tambahkan <code>SERPER_API_KEY</code> untuk
+                data Google Maps.
+              </span>
+            )}
+          </div>
+          <a
+            href="https://serper.dev/dashboard"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-primary underline"
+          >
+            Kredit resmi di Serper <ExternalLink className="h-3 w-3" />
+          </a>
+        </CardContent>
+      </Card>
 
       <Tabs defaultValue="search">
         <TabsList>
@@ -354,6 +493,11 @@ export function Prospecting() {
                             ? "Cache"
                             : "OpenStreetMap"}
                     </Badge>
+                  )}
+                  {lastSearchAt && (
+                    <span className="text-[10px] text-muted-foreground shrink-0">
+                      disimpan {formatSavedAt(lastSearchAt)}
+                    </span>
                   )}
                   {results.length > 0 && (
                     <Button variant="ghost" size="sm" onClick={toggleAll} className="h-7 text-xs gap-1">

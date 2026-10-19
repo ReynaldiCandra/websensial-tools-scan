@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useLocation } from "wouter";
 import {
   Search, MapPin, Globe, CheckCircle2, Star,
@@ -13,6 +13,7 @@ import {
   Card, CardContent, CardDescription, CardHeader, CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -81,6 +82,47 @@ interface StoredSearch {
   savedAt: string;
 }
 
+/**
+ * 0–100 lead score. No website is the strongest buying signal, a phone number
+ * makes the lead actionable, and rating + review count show real traction.
+ */
+function priorityScore(row: SearchResult): number {
+  let score = 0;
+  if (!row.hasWebsite) score += 45;
+  if (row.phone) score += 20;
+
+  const rating = row.rating ? Number(row.rating) : null;
+  if (rating !== null && Number.isFinite(rating)) {
+    if (rating >= 4.5) score += 20;
+    else if (rating >= 4) score += 15;
+    else if (rating >= 3.5) score += 8;
+  }
+
+  const reviews = row.reviewCount ? Number(row.reviewCount) : 0;
+  if (reviews >= 100) score += 15;
+  else if (reviews >= 30) score += 10;
+  else if (reviews >= 10) score += 5;
+
+  return Math.min(100, score);
+}
+
+function priorityLabel(score: number): string {
+  if (score >= 80) return "Prioritas tinggi";
+  if (score >= 55) return "Sedang";
+  return "Rendah";
+}
+
+function priorityClass(score: number): string {
+  if (score >= 80) return "border-orange-500/30 bg-orange-500/10 text-orange-600";
+  if (score >= 55) return "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400";
+  return "text-muted-foreground";
+}
+
+/** Stable identity so selection survives re-sorting of the result list. */
+function rowKey(row: SearchResult): string {
+  return `${row.placeId ?? ""}::${row.osm_id}::${row.name}`;
+}
+
 function formatSavedAt(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
@@ -130,9 +172,29 @@ export function Prospecting() {
   // Credit monitor for the Google Maps provider (Serper).
   const [quota, setQuota] = useState<QuotaInfo | null>(null);
 
-  // Selection state
-  const [selected, setSelected] = useState<Set<number>>(new Set());
+  // Selection state (keyed by rowKey so sorting keeps the ticks correct)
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [importing, setImporting] = useState(false);
+  const [sortBy, setSortBy] = useState<"priority" | "rating" | "name">("priority");
+
+  const displayed = useMemo(() => {
+    if (!results) return [] as SearchResult[];
+    const rows = [...results];
+
+    if (sortBy === "rating") {
+      rows.sort((a, b) => Number(b.rating ?? -1) - Number(a.rating ?? -1));
+    } else if (sortBy === "name") {
+      rows.sort((a, b) => a.name.localeCompare(b.name, "id"));
+    } else {
+      rows.sort(
+        (a, b) =>
+          priorityScore(b) - priorityScore(a) ||
+          Number(b.reviewCount ?? 0) - Number(a.reviewCount ?? 0),
+      );
+    }
+
+    return rows;
+  }, [results, sortBy]);
 
   // CSV import state
   const [csvText, setCsvText] = useState("");
@@ -238,23 +300,22 @@ export function Prospecting() {
     }
   }, [city, category, onlyNoWebsite, loadQuota]);
 
-  const toggleSelect = (idx: number) => {
+  const toggleSelect = (key: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(idx)) next.delete(idx);
-      else next.add(idx);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
 
   const toggleAll = () => {
-    if (!results) return;
-    if (selected.size === results.length) setSelected(new Set());
-    else setSelected(new Set(results.map((_, i) => i)));
+    if (!displayed.length) return;
+    if (selected.size === displayed.length) setSelected(new Set());
+    else setSelected(new Set(displayed.map(rowKey)));
   };
 
-  const handleImport = async (items: SearchResult[], selectedIdx: Set<number>) => {
-    const toImport = [...selectedIdx].map((i) => items[i]).filter(Boolean);
+  const handleImport = async (toImport: SearchResult[]) => {
     if (!toImport.length) {
       toast({ title: "Pilih minimal 1 bisnis", variant: "destructive" });
       return;
@@ -406,17 +467,23 @@ export function Prospecting() {
             <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
                 <div className="space-y-1.5">
-                  <Label>Kota</Label>
-                  <Select value={city} onValueChange={setCity}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {CITIES.map((c) => (
-                        <SelectItem key={c} value={c}>{c}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="city">Kota</Label>
+                  <Input
+                    id="city"
+                    list="prospecting-cities"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    placeholder="cth: Cikarang"
+                    autoComplete="off"
+                  />
+                  <datalist id="prospecting-cities">
+                    {CITIES.map((c) => (
+                      <option key={c} value={c} />
+                    ))}
+                  </datalist>
+                  <p className="text-[11px] text-muted-foreground">
+                    Ketik kota/kecamatan mana pun — daftar hanya saran.
+                  </p>
                 </div>
                 <div className="space-y-1.5">
                   <Label>Kategori Bisnis</Label>
@@ -442,7 +509,11 @@ export function Prospecting() {
                       Hanya yang belum punya website
                     </Label>
                   </div>
-                  <Button onClick={handleSearch} disabled={loading} className="w-full gap-2">
+                  <Button
+                    onClick={handleSearch}
+                    disabled={loading || city.trim().length < 2}
+                    className="w-full gap-2"
+                  >
                     {loading ? (
                       <><RefreshCw className="h-4 w-4 animate-spin" /> Mencari...</>
                     ) : (
@@ -483,6 +554,18 @@ export function Prospecting() {
                     Ditemukan <span className="text-primary font-bold">{results.length}</span> bisnis
                     {searchMeta && ` — ${searchMeta.category} di ${searchMeta.city}`}
                   </p>
+                  {results.length > 1 && (
+                    <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
+                      <SelectTrigger className="h-7 w-[168px] text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="priority">Skor prioritas</SelectItem>
+                        <SelectItem value="rating">Rating tertinggi</SelectItem>
+                        <SelectItem value="name">Nama A–Z</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
                   {searchMeta?.source && (
                     <Badge variant="outline" className="text-[10px] shrink-0">
                       {searchMeta.source === "serper" || searchMeta.source === "outscraper"
@@ -499,15 +582,20 @@ export function Prospecting() {
                       disimpan {formatSavedAt(lastSearchAt)}
                     </span>
                   )}
-                  {results.length > 0 && (
+                  {displayed.length > 0 && (
                     <Button variant="ghost" size="sm" onClick={toggleAll} className="h-7 text-xs gap-1">
                       <CheckCircle2 className="h-3.5 w-3.5" />
-                      {selected.size === results.length ? "Batal pilih semua" : "Pilih semua"}
+                      {selected.size === displayed.length ? "Batal pilih semua" : "Pilih semua"}
                     </Button>
                   )}
                 </div>
                 {selected.size > 0 && (
-                  <Button size="sm" onClick={() => handleImport(results, selected)} disabled={importing} className="gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => handleImport(displayed.filter((r) => selected.has(rowKey(r))))}
+                    disabled={importing}
+                    className="gap-2"
+                  >
                     {importing
                       ? <><RefreshCw className="h-3.5 w-3.5 animate-spin" />Mengimport...</>
                       : <><Download className="h-3.5 w-3.5" />Import {selected.size} ke Pipeline</>}
@@ -525,19 +613,23 @@ export function Prospecting() {
                 </div>
               ) : (
                 <div className="grid gap-2">
-                  {results.map((r, i) => (
+                  {displayed.map((r) => {
+                    const key = rowKey(r);
+                    const score = priorityScore(r);
+
+                    return (
                     <div
-                      key={r.placeId ?? `${r.osm_id}-${i}`}
-                      onClick={() => toggleSelect(i)}
+                      key={key}
+                      onClick={() => toggleSelect(key)}
                       className={`flex items-center gap-4 rounded-lg border p-3 cursor-pointer transition-colors ${
-                        selected.has(i)
+                        selected.has(key)
                           ? "border-primary/50 bg-primary/5"
                           : "border-border hover:border-muted-foreground/30 hover:bg-muted/30"
                       }`}
                     >
                       <Checkbox
-                        checked={selected.has(i)}
-                        onCheckedChange={() => toggleSelect(i)}
+                        checked={selected.has(key)}
+                        onCheckedChange={() => toggleSelect(key)}
                         onClick={(e) => e.stopPropagation()}
                       />
                       <div className="flex-1 min-w-0">
@@ -545,6 +637,13 @@ export function Prospecting() {
                           <span className="font-medium text-sm truncate">{r.name}</span>
                           <Badge variant="outline" className="text-xs shrink-0">
                             {r.category}
+                          </Badge>
+                          <Badge
+                            variant="outline"
+                            className={`text-[10px] shrink-0 gap-1 ${priorityClass(score)}`}
+                            title={`Skor prioritas ${score}/100`}
+                          >
+                            {score} · {priorityLabel(score)}
                           </Badge>
                           {r.hasWebsite ? (
                             <Badge variant="secondary" className="text-xs shrink-0 gap-1">
@@ -585,7 +684,8 @@ export function Prospecting() {
                         )}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -663,7 +763,9 @@ export function Prospecting() {
                   <Button
                     size="sm"
                     disabled={csvSelected.size === 0 || importing}
-                    onClick={() => handleImport(csvParsed, csvSelected)}
+                    onClick={() =>
+                      handleImport(csvParsed.filter((_, i) => csvSelected.has(i)))
+                    }
                     className="gap-2"
                   >
                     <Download className="h-3.5 w-3.5" />

@@ -288,7 +288,9 @@ const BooleanQuery = z.preprocess((value) => {
 }, z.boolean());
 
 const SearchQuerySchema = z.object({
-  city: z.string(),
+  // Any city is accepted; the 20 built-in cities just skip the extra geocode
+  // step and ship with hand-tuned search radii.
+  city: z.string().trim().min(2).max(60),
   category: z.string(),
   onlyNoWebsite: BooleanQuery.optional().default(true),
 });
@@ -528,6 +530,82 @@ async function fetchPhotonQuery(
     }
 
     return data.features;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/** Case-insensitive lookup so "bandung" still gets the tuned radius. */
+function lookupKnownCity(city: string): { lat: number; lon: number; radius: number } | null {
+  const wanted = city.trim().toLowerCase();
+  for (const [name, coords] of Object.entries(INDONESIAN_CITIES)) {
+    if (name.toLowerCase() === wanted) return coords;
+  }
+  return null;
+}
+
+/**
+ * Free-text cities (Cikarang, Tasikmalaya, …) are geocoded through Photon so
+ * the free OpenStreetMap fallback still has a search area. Google Maps
+ * providers do not need coordinates at all.
+ */
+async function geocodeCity(
+  city: string,
+): Promise<{ lat: number; lon: number; radius: number } | null> {
+  const params = new URLSearchParams({ q: `${city}, Indonesia`, limit: "5", lang: "id" });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PHOTON_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${PHOTON_ENDPOINT}?${params}`, {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "websensial-crm/1.0 (prospecting search)",
+      },
+      signal: controller.signal,
+    });
+
+    if (!response.ok) return null;
+
+    const data = (await response.json()) as { features?: PhotonFeature[] };
+    const withCoords = (data.features ?? []).filter((feature) => {
+      const coordinates = feature.geometry?.coordinates;
+      return (
+        Array.isArray(coordinates) &&
+        Number.isFinite(coordinates[0]) &&
+        Number.isFinite(coordinates[1])
+      );
+    });
+
+    // Prefer real settlements over a shop that happens to share the name.
+    const settlements = new Set([
+      "city",
+      "town",
+      "village",
+      "municipality",
+      "district",
+      "county",
+      "state",
+    ]);
+    const place =
+      withCoords.find(
+        (feature) =>
+          feature.properties?.osm_key === "place" &&
+          settlements.has(String(feature.properties?.osm_value)),
+      ) ??
+      withCoords.find((feature) => feature.properties?.osm_key === "place") ??
+      withCoords[0];
+
+    if (!place?.geometry?.coordinates) return null;
+
+    const [lon, lat] = place.geometry.coordinates;
+    return { lat, lon, radius: 10_000 };
+  } catch (err) {
+    logger.warn(
+      { message: err instanceof Error ? err.message : String(err) },
+      "City geocoding failed",
+    );
+    return null;
   } finally {
     clearTimeout(timeout);
   }
@@ -886,10 +964,9 @@ router.get("/prospecting/search", async (req, res) => {
     if (!parsed.success) return res.status(400).json({ error: "Invalid query params" });
 
     const { city, category, onlyNoWebsite } = parsed.data;
-    const cityCoords = INDONESIAN_CITIES[city];
+    const knownCity = lookupKnownCity(city);
     const categoryTags = CATEGORY_TAGS[category];
 
-    if (!cityCoords) return res.status(400).json({ error: `City '${city}' not supported` });
     if (!categoryTags) return res.status(400).json({ error: `Category '${category}' not supported` });
 
     const filterByWebsite = (rows: ProspectSearchResult[]) =>
@@ -972,6 +1049,15 @@ router.get("/prospecting/search", async (req, res) => {
           });
         }
       }
+    }
+
+    // OpenStreetMap needs a search area: the 20 built-in cities ship with tuned
+    // coordinates, any other city is geocoded once per search.
+    const cityCoords = knownCity ?? (await geocodeCity(city));
+    if (!cityCoords) {
+      return res.status(400).json({
+        error: `Kota '${city}' tidak ditemukan. Periksa ejaan atau pilih kota dari daftar.`,
+      });
     }
 
     // Cache key cuma dari city+category (bukan onlyNoWebsite), karena itu cuma filter tampilan

@@ -369,11 +369,83 @@ describe("GET /api/prospecting/search", () => {
     assert.ok(res.body.error.length > 0);
   });
 
-  it("rejects an unsupported city without calling any data source", async () => {
-    let called = false;
-    mockFetch(async () => {
-      called = true;
-      return textResponse("should not be called", 500);
+  it("geocodes a free-text city before the OSM fallback", async () => {
+    const geocodeQueries: string[] = [];
+
+    mockFetch(async (url) => {
+      if (url.includes("photon.komoot.io")) {
+        const query = new URL(url).searchParams.get("q") ?? "";
+        geocodeQueries.push(query);
+
+        if (query.startsWith("Cikarang")) {
+          return jsonResponse({
+            features: [
+              {
+                properties: {
+                  osm_id: 9001,
+                  osm_key: "place",
+                  osm_value: "town",
+                  name: "Cikarang",
+                },
+                geometry: { type: "Point", coordinates: [107.15, -6.26] },
+              },
+            ],
+          });
+        }
+
+        return jsonResponse({ features: [] });
+      }
+      if (url.includes("overpass")) {
+        return jsonResponse({ elements: overpassElements });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    const res = await request(app)
+      .get("/api/prospecting/search")
+      .set("x-api-key", API_KEY)
+      .query({ city: "Cikarang", category: "Laundry" });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.source, "overpass");
+    assert.equal(res.body.total, 2);
+    assert.ok(geocodeQueries.some((q) => q.includes("Cikarang")));
+  });
+
+  it("accepts any city when Serper is configured", async () => {
+    process.env.SERPER_API_KEY = "test-serper-key";
+    let sentBody: Record<string, unknown> | null = null;
+
+    mockFetch(async (url, init) => {
+      if (url === "https://google.serper.dev/maps") {
+        sentBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return jsonResponse({
+          places: [
+            { title: "Klinik Cikarang", rating: 4.7, ratingCount: 40, cid: "555" },
+          ],
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    const res = await request(app)
+      .get("/api/prospecting/search")
+      .set("x-api-key", API_KEY)
+      .query({ city: "Cikarang", category: "Kesehatan" });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.source, "serper");
+    assert.equal(res.body.total, 1);
+    assert.equal(res.body.results[0].name, "Klinik Cikarang");
+    // Cast: TS cannot see the assignment that happens inside the fetch mock.
+    const sent = sentBody as Record<string, unknown> | null;
+    assert.equal(sent?.q, "klinik, Cikarang, Indonesia");
+  });
+
+  it("rejects a city that cannot be geocoded", async () => {
+    mockFetch(async (url) => {
+      if (url.includes("photon.komoot.io")) return jsonResponse({ features: [] });
+      throw new Error(`Unexpected fetch: ${url}`);
     });
 
     const res = await request(app)
@@ -382,8 +454,7 @@ describe("GET /api/prospecting/search", () => {
       .query({ city: "Atlantis", category: "Laundry" });
 
     assert.equal(res.status, 400);
-    assert.equal(res.body.error, "City 'Atlantis' not supported");
-    assert.equal(called, false);
+    assert.match(String(res.body.error), /tidak ditemukan/i);
   });
 });
 

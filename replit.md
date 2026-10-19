@@ -12,7 +12,7 @@ Platform all-in-one untuk web developer / digital agency Indonesia: temukan bisn
 - `npm test` — API endpoint tests (search + bulk-import; import test needs `DATABASE_URL`)
 - `npm run db:push` — push DB schema changes (dev only)
 - `npm --workspace @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- Required env: `DATABASE_URL` — Postgres connection string; `ADMIN_API_KEY` + `VITE_API_KEY` (same value) for API auth in production (see `README.md`)
+- Required env: `DATABASE_URL` — Postgres connection string; `AUTH_PASSWORD` (dashboard login, falls back to `ADMIN_API_KEY`) and `SESSION_SECRET` (cookie signing) for production (see `README.md`)
 
 Both npm and pnpm installs are supported. The local Vite server proxies `/api`
 to `http://localhost:8080`, so no separate proxy is required.
@@ -24,7 +24,7 @@ to `http://localhost:8080`, so no separate proxy is required.
 - Frontend: React + Vite (served at `/`)
 - DB: PostgreSQL + Drizzle ORM
 - Validation: Zod (`zod/v4`), `drizzle-zod`
-- API auth: `ADMIN_API_KEY` (server) — semua endpoint kecuali `/healthz` menuntut header `x-api-key` / `Authorization: Bearer`. Frontend mengirim `VITE_API_KEY` sebagai `x-api-key`.
+- API auth: semua endpoint kecuali `/healthz`, `/preview/:token`, dan `/auth/*` menuntut cookie sesi (`ws_session`, dari `POST /api/auth/login`) atau header `x-api-key` / `Authorization: Bearer` untuk skrip. Frontend tidak lagi memuat API key.
 - CSV import: otomatis mendeteksi baris header dari ekspor ekstensi browser (G Maps Leads Finder, dll) dan mendupe by nomor telepon ternormalisasi + URL maps (dalam batch & terhadap database).
 - API codegen: Orval (from OpenAPI spec)
 - Build: esbuild (CJS bundle)
@@ -91,9 +91,9 @@ Use the Deploy button in Replit. Full-stack with PostgreSQL, no extra config nee
 
 ## Gotchas
 
-- `ADMIN_API_KEY` wajib di produksi (`NODE_ENV=production`): tanpa key, server menolak melayani endpoint CRM (fail closed, 503). Di development boleh kosong (unauthenticated + warning).
-- `VITE_API_KEY` (frontend) harus sama nilainya dengan `ADMIN_API_KEY` (server).
-- Karena kunci dikirim dari bundle browser (Vite), ini penghalang scanner/bot — bukan pengganti user auth penuh untuk multi-user.
+- `ADMIN_API_KEY` wajib di produksi (`NODE_ENV=production`): tanpa key dan tanpa sesi valid, server menolak melayani endpoint CRM (fail closed, 503/401). Di development boleh kosong (unauthenticated + warning).
+- Login memakai `AUTH_PASSWORD`; bila kosong, password = `ADMIN_API_KEY`. Cookie ditandatangani `SESSION_SECRET` (fallback `ADMIN_API_KEY`), httpOnly, 30 hari.
+- Rate limit in-memory: 20 pencarian/menit per IP dan 6 percobaan login/5 menit per IP.
 - Import CSV akan skip baris duplikat (telepon ternormalisasi atau URL maps sudah ada di database/batch) dan melaporkan jumlah skip di response (`skippedDuplicatesInBatch`, `skippedExisting`, `invalidRows`, `truncated`).
 
 - Always run `pnpm --filter @workspace/api-spec run codegen` after changing `openapi.yaml`

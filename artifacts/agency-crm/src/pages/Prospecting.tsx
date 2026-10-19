@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import {
-  Search, MapPin, Globe, CheckCircle2,
+  Search, MapPin, Globe, CheckCircle2, Star,
   RefreshCw, AlertTriangle, ExternalLink, MessageCircle, ChevronDown, X, Upload, FileText, WifiOff, Download
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -71,6 +71,7 @@ interface SearchResult {
   website: string | null;
   mapsUrl: string | null;
   osm_id: number;
+  placeId?: string | null;
   rating?: string | null;
   reviewCount?: string | null;
   ownerName?: string | null;
@@ -176,6 +177,7 @@ export function Prospecting() {
             hasWebsite: r.hasWebsite,
             mapsUrl: r.mapsUrl ?? undefined,
             rating: r.rating ?? undefined,
+            reviewCount: r.reviewCount ?? undefined,
             ownerName: r.ownerName ?? undefined,
             currentWebsite: r.currentWebsite ?? undefined,
           })),
@@ -326,7 +328,7 @@ export function Prospecting() {
 
           {results !== null && (
             <div className="space-y-3">
-              {searchMeta?.source === "photon" && (
+              {searchMeta?.source === "photon" && results.length > 0 && (
                 <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
                   <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
                   <p>
@@ -342,6 +344,17 @@ export function Prospecting() {
                     Ditemukan <span className="text-primary font-bold">{results.length}</span> bisnis
                     {searchMeta && ` — ${searchMeta.category} di ${searchMeta.city}`}
                   </p>
+                  {searchMeta?.source && (
+                    <Badge variant="outline" className="text-[10px] shrink-0">
+                      {searchMeta.source === "outscraper"
+                        ? "Google Maps"
+                        : searchMeta.source === "photon"
+                          ? "Photon (cadangan)"
+                          : searchMeta.source === "cache"
+                            ? "Cache"
+                            : "OpenStreetMap"}
+                    </Badge>
+                  )}
                   {results.length > 0 && (
                     <Button variant="ghost" size="sm" onClick={toggleAll} className="h-7 text-xs gap-1">
                       <CheckCircle2 className="h-3.5 w-3.5" />
@@ -370,7 +383,7 @@ export function Prospecting() {
                 <div className="grid gap-2">
                   {results.map((r, i) => (
                     <div
-                      key={r.osm_id}
+                      key={r.placeId ?? `${r.osm_id}-${i}`}
                       onClick={() => toggleSelect(i)}
                       className={`flex items-center gap-4 rounded-lg border p-3 cursor-pointer transition-colors ${
                         selected.has(i)
@@ -400,6 +413,13 @@ export function Prospecting() {
                           )}
                         </div>
                         <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
+                          {r.rating && (
+                            <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
+                              <Star className="h-3 w-3 fill-current" />
+                              {r.rating}
+                              {r.reviewCount ? <span className="font-normal text-muted-foreground">({r.reviewCount})</span> : null}
+                            </span>
+                          )}
                           {r.phone && <span className="flex items-center gap-1"><MessageCircle className="h-3 w-3" />{r.phone}</span>}
                           {r.address && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{r.address}</span>}
                         </div>

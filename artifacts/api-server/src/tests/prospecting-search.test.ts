@@ -16,11 +16,13 @@ before(async () => {
   process.env.NODE_ENV = "production";
   process.env.LOG_LEVEL = "silent";
   process.env.ADMIN_API_KEY = API_KEY;
+  delete process.env.OUTSCRAPER_API_KEY;
 
   ({ default: app } = await import("../app"));
 });
 
 afterEach(() => {
+  delete process.env.OUTSCRAPER_API_KEY;
   globalThis.fetch = originalFetch;
 });
 
@@ -168,6 +170,62 @@ describe("GET /api/prospecting/search", () => {
     assert.equal(res.body.total, 1);
     assert.equal(res.body.results[0].name, "Photon Laundry");
     assert.equal(res.body.results[0].hasWebsite, false);
+  });
+
+  it("uses Outscraper Google Maps data when configured", async () => {
+    process.env.OUTSCRAPER_API_KEY = "test-outscraper-key";
+
+    mockFetch(async (url) => {
+      if (url.includes("api.outscraper.cloud")) {
+        return jsonResponse({
+          status: "Success",
+          data: [
+            [
+              {
+                name: "Fashion Lokal",
+                full_address: "Jl. Braga No. 1",
+                phone: "+62 812-3456-7890",
+                site: null,
+                rating: 4.8,
+                reviews: 120,
+                category: "Clothing store",
+                latitude: -6.9175,
+                longitude: 107.6191,
+                location_link: "https://maps.google.com/?cid=123",
+                place_id: "place-1",
+                business_status: "OPERATIONAL",
+              },
+              {
+                name: "Fashion Website",
+                site: "https://fashion.example",
+                rating: 4.5,
+                reviews: 80,
+                latitude: -6.9175,
+                longitude: 107.6191,
+                place_id: "place-2",
+                business_status: "OPERATIONAL",
+              },
+            ],
+          ],
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    const res = await request(app)
+      .get("/api/prospecting/search")
+      .set("x-api-key", API_KEY)
+      .query({ city: "Bandung", category: "Fashion" });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.source, "outscraper");
+    assert.equal(res.body.total, 1);
+    assert.equal(res.body.results[0].name, "Fashion Lokal");
+    assert.equal(res.body.results[0].phone, "081234567890");
+    assert.equal(res.body.results[0].rating, "4.8");
+    assert.equal(res.body.results[0].reviewCount, "120");
+    assert.equal(res.body.results[0].hasWebsite, false);
+    assert.equal(res.body.results[0].mapsUrl, "https://maps.google.com/?cid=123");
   });
 
   it("retries Photon with the category label when the first query has no matching tags", async () => {

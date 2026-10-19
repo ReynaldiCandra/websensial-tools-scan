@@ -110,9 +110,11 @@ If you see an error in the Search tab:
 
 1. Push the repo to GitHub and import it in Vercel.
 2. Add these environment variables in **Project → Settings → Environment
-   Variables** (Production and Preview): `DATABASE_URL`, `ADMIN_API_KEY`, and
-   `VITE_API_KEY`. `VITE_API_KEY` must match `ADMIN_API_KEY`; it is embedded at
-   build time, so redeploy after changing it.
+   Variables** (Production and Preview): `DATABASE_URL`, `ADMIN_API_KEY`,
+   `VITE_API_KEY`, and `OUTSCRAPER_API_KEY`. `VITE_API_KEY` must match
+   `ADMIN_API_KEY`; it is embedded at build time, so redeploy after changing it.
+   `OUTSCRAPER_API_KEY` enables Google Maps data (rating, phone, website);
+   without it the search falls back to OpenStreetMap.
 3. Deploy. `vercel.json` builds the frontend and bundles
    `artifacts/api-server/src/vercel.ts` into `api/_bundle.mjs` with
    `scripts/build-api-function.mjs`. `api/index.js` is the small Vercel function

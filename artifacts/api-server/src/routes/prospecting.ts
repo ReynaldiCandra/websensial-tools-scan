@@ -34,6 +34,12 @@ const OVERPASS_TOTAL_BUDGET_MS = 24_000;
 const PHOTON_ENDPOINT = "https://photon.komoot.io/api/";
 const PHOTON_TIMEOUT_MS = 20_000;
 
+// Outscraper provides Google Maps business data (rating, phone, website).
+// It is optional: without OUTSCRAPER_API_KEY the endpoint keeps using OSM.
+const OUTSCRAPER_ENDPOINT = "https://api.outscraper.cloud/google-maps-search";
+const OUTSCRAPER_TIMEOUT_MS = 45_000;
+const OUTSCRAPER_LIMIT = 20;
+
 const CATEGORY_KEYWORDS: Record<string, string> = {
   "Kuliner": "restoran",
   "Salon & Kecantikan": "salon",
@@ -175,6 +181,45 @@ interface PhotonFeature {
   };
 }
 
+interface ProspectSearchResult {
+  name: string;
+  phone: string;
+  address: string | null;
+  category: string;
+  hasWebsite: boolean;
+  website: string | null;
+  mapsUrl: string | null;
+  lat: number | null;
+  lon: number | null;
+  osm_id: number;
+  placeId?: string | null;
+  rating?: string | null;
+  reviewCount?: string | null;
+}
+
+interface OutscraperPlace {
+  name?: string;
+  full_address?: string;
+  phone?: string;
+  site?: string;
+  rating?: number;
+  reviews?: number;
+  category?: string;
+  type?: string;
+  latitude?: number;
+  longitude?: number;
+  location_link?: string;
+  place_id?: string;
+  business_status?: string;
+}
+
+interface OutscraperResponse {
+  id?: string;
+  status?: string;
+  data?: OutscraperPlace[][] | OutscraperPlace[];
+  error?: string;
+}
+
 function buildOverpassQuery(selectors: string[], lat: number, lon: number, radius: number): string {
   const union = selectors
     .map((tags) => `node${tags}(around:${radius},${lat},${lon});way${tags}(around:${radius},${lat},${lon});`)
@@ -258,6 +303,66 @@ async function writeOverpassCache(
       .onConflictDoUpdate({
         target: overpassCacheTable.cacheKey,
         set: { result: elements, createdAt: new Date() },
+      });
+
+    cacheDisabledUntil = 0;
+  } catch (err) {
+    cacheDisabledUntil = Date.now() + CACHE_RETRY_AFTER_FAILURE_MS;
+    logger.warn(
+      { message: err instanceof Error ? err.message : String(err) },
+      "Prospecting cache write failed; ignoring",
+    );
+  }
+}
+
+async function readProspectCache(
+  cacheKey: string,
+): Promise<{ results: ProspectSearchResult[] | null; stale: boolean; dbAvailable: boolean }> {
+  if (!isDatabaseConfigured || Date.now() < cacheDisabledUntil) {
+    return { results: null, stale: false, dbAvailable: false };
+  }
+
+  try {
+    const [cached] = await db
+      .select()
+      .from(overpassCacheTable)
+      .where(eq(overpassCacheTable.cacheKey, cacheKey));
+
+    cacheDisabledUntil = 0;
+
+    if (!cached) {
+      return { results: null, stale: false, dbAvailable: true };
+    }
+
+    const stale = Date.now() - cached.createdAt.getTime() >= OVERPASS_CACHE_TTL_MS;
+    return {
+      results: cached.result as ProspectSearchResult[],
+      stale,
+      dbAvailable: true,
+    };
+  } catch (err) {
+    cacheDisabledUntil = Date.now() + CACHE_RETRY_AFTER_FAILURE_MS;
+    logger.warn(
+      { message: err instanceof Error ? err.message : String(err) },
+      "Prospecting cache read failed; continuing without cache",
+    );
+    return { results: null, stale: false, dbAvailable: false };
+  }
+}
+
+async function writeProspectCache(
+  cacheKey: string,
+  results: ProspectSearchResult[],
+): Promise<void> {
+  if (!isDatabaseConfigured || Date.now() < cacheDisabledUntil) return;
+
+  try {
+    await db
+      .insert(overpassCacheTable)
+      .values({ cacheKey, result: results })
+      .onConflictDoUpdate({
+        target: overpassCacheTable.cacheKey,
+        set: { result: results, createdAt: new Date() },
       });
 
     cacheDisabledUntil = 0;
@@ -491,6 +596,91 @@ async function fetchOverpass(query: string): Promise<OverpassElement[]> {
   throw lastError ?? new Error("All Overpass mirrors are unavailable");
 }
 
+async function fetchOutscraper(
+  city: string,
+  category: string,
+): Promise<ProspectSearchResult[]> {
+  const apiKey = process.env.OUTSCRAPER_API_KEY?.trim();
+  if (!apiKey) throw new Error("OUTSCRAPER_API_KEY is not configured");
+
+  const url = new URL(OUTSCRAPER_ENDPOINT);
+  url.searchParams.set("query", `${category}, ${city}, Indonesia`);
+  url.searchParams.set("limit", String(OUTSCRAPER_LIMIT));
+  url.searchParams.set("async", "false");
+  url.searchParams.set("language", "id");
+  url.searchParams.set("region", "ID");
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), OUTSCRAPER_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "X-API-KEY": apiKey,
+        Accept: "application/json",
+      },
+      signal: controller.signal,
+    });
+
+    const body = await response.text();
+    if (!response.ok) {
+      throw new Error(`Outscraper returned ${response.status}: ${body.slice(0, 160)}`);
+    }
+
+    const payload = JSON.parse(body) as OutscraperResponse;
+    if (payload.status && payload.status !== "Success") {
+      throw new Error(
+        `Outscraper status ${payload.status}: ${payload.error ?? "no data"}`,
+      );
+    }
+
+    const raw = Array.isArray(payload.data) ? payload.data : [];
+    const places = raw.flat() as OutscraperPlace[];
+
+    return places
+      .filter(
+        (place) =>
+          place.name && place.business_status !== "CLOSED_PERMANENTLY",
+      )
+      .map((place) => {
+        const lat = typeof place.latitude === "number" ? place.latitude : null;
+        const lon = typeof place.longitude === "number" ? place.longitude : null;
+        const website = place.site?.trim() || null;
+        const rating =
+          place.rating != null && Number.isFinite(Number(place.rating))
+            ? Number(place.rating).toFixed(1)
+            : null;
+
+        return {
+          name: place.name!,
+          phone: normalizePhone(place.phone ?? ""),
+          address: place.full_address ?? null,
+          category: place.category || place.type || category,
+          hasWebsite: website !== null,
+          website,
+          mapsUrl:
+            place.location_link ??
+            (lat !== null && lon !== null
+              ? `https://maps.google.com/?q=${lat},${lon}`
+              : null),
+          lat,
+          lon,
+          osm_id: 0,
+          placeId: place.place_id ?? null,
+          rating,
+          reviewCount: place.reviews != null ? String(place.reviews) : null,
+        };
+      });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new Error("Outscraper request timed out");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 router.get("/prospecting/cities", (_req, res) => {
   return res.json(Object.keys(INDONESIAN_CITIES));
 });
@@ -511,12 +701,71 @@ router.get("/prospecting/search", async (req, res) => {
     if (!cityCoords) return res.status(400).json({ error: `City '${city}' not supported` });
     if (!categoryTags) return res.status(400).json({ error: `Category '${category}' not supported` });
 
+    const filterByWebsite = (rows: ProspectSearchResult[]) =>
+      rows.filter((row) => (onlyNoWebsite ? !row.hasWebsite : true));
+
+    // Google Maps data (name, rating, phone, website) via Outscraper. This is
+    // the preferred provider when configured; OSM remains the free fallback.
+    if (process.env.OUTSCRAPER_API_KEY?.trim()) {
+      const outscraperCacheKey = `outscraper::${city}::${category}::${OUTSCRAPER_LIMIT}`;
+      const cachedOutscraper = await readProspectCache(outscraperCacheKey);
+
+      if (cachedOutscraper.results && !cachedOutscraper.stale) {
+        const results = filterByWebsite(cachedOutscraper.results);
+        return res.json({
+          total: results.length,
+          city,
+          category,
+          cached: true,
+          source: "outscraper",
+          dbAvailable: cachedOutscraper.dbAvailable,
+          results,
+        });
+      }
+
+      try {
+        const outscraperResults = await fetchOutscraper(city, category);
+        if (outscraperResults.length > 0) {
+          await writeProspectCache(outscraperCacheKey, outscraperResults);
+          const results = filterByWebsite(outscraperResults);
+          return res.json({
+            total: results.length,
+            city,
+            category,
+            cached: false,
+            source: "outscraper",
+            dbAvailable: cachedOutscraper.dbAvailable,
+            results,
+          });
+        }
+        logger.warn("Outscraper returned no places; falling back to OSM");
+      } catch (err) {
+        logger.warn(
+          { message: err instanceof Error ? err.message : String(err) },
+          "Outscraper search failed; falling back to OSM",
+        );
+
+        if (cachedOutscraper.results) {
+          const results = filterByWebsite(cachedOutscraper.results);
+          return res.json({
+            total: results.length,
+            city,
+            category,
+            cached: true,
+            source: "outscraper",
+            dbAvailable: cachedOutscraper.dbAvailable,
+            results,
+          });
+        }
+      }
+    }
+
     // Cache key cuma dari city+category (bukan onlyNoWebsite), karena itu cuma filter tampilan
     const cacheKey = `${city}::${category}`;
     const cached = await readOverpassCache(cacheKey);
 
     let elements: OverpassElement[] | null = cached.stale ? null : cached.elements;
-    let source: "cache" | "photon" | "overpass" = "cache";
+    let source: "cache" | "photon" | "overpass" | "outscraper" = "cache";
 
     if (!elements || cached.stale) {
       elements = null;
@@ -622,9 +871,12 @@ router.get("/prospecting/search", async (req, res) => {
           hasWebsite,
           website: tags.website || tags["contact:website"] || null,
           mapsUrl,
-          lat,
-          lon,
+          lat: lat ?? null,
+          lon: lon ?? null,
           osm_id: el.id,
+          placeId: null,
+          rating: null,
+          reviewCount: null,
         };
       })
       .filter((r) => (onlyNoWebsite ? !r.hasWebsite : true));
@@ -660,6 +912,7 @@ const BulkImportSchema = z.object({
       hasWebsite: z.boolean().optional().default(false),
       mapsUrl: z.string().optional(),
       rating: z.string().optional(),
+      reviewCount: z.string().optional(),
       ownerName: z.string().optional(),
       currentWebsite: z.string().optional(),
     })
@@ -916,7 +1169,7 @@ router.post("/prospecting/bulk-import", async (req, res) => {
       hasWebsite: p.hasWebsite,
       mapsUrl: p.mapsUrl ?? null,
       rating: parseRating(p.rating),
-      reviewCount: null,
+      reviewCount: p.reviewCount?.trim() || null,
       ownerName: p.ownerName?.trim() || null,
       currentWebsite: p.currentWebsite?.trim() || null,
     }));

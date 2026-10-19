@@ -50,7 +50,6 @@ Thumbs.db
 !.env.example
 
 # generated Vercel function bundle (built by scripts/build-api-function.mjs)
-api/index.mjs
 /api/*.mjs
 /api/*.mjs.map
 # env files — kredensial tidak pernah masuk repo

@@ -15,11 +15,11 @@ const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 async function run() {
   await esbuild({
-    entryPoints: [path.resolve(rootDir, "api/index.ts")],
+    entryPoints: [path.resolve(rootDir, "artifacts/api-server/src/vercel.ts")],
     platform: "node",
     bundle: true,
     format: "esm",
-    outfile: path.resolve(rootDir, "api/index.mjs"),
+    outfile: path.resolve(rootDir, "api/_bundle.mjs"),
     logLevel: "info",
     external: ["*.node", "pg-native", "fsevents"],
     sourcemap: false,
@@ -34,7 +34,7 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
 `,
     },
   });
-  console.log("✓ api/index.mjs berhasil dibundle untuk Vercel function");
+  console.log("✓ api/_bundle.mjs berhasil dibundle untuk Vercel function");
 }
 
 run().catch((err) => {

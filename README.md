@@ -113,10 +113,11 @@ If you see an error in the Search tab:
    Variables** (Production and Preview): `DATABASE_URL`, `ADMIN_API_KEY`, and
    `VITE_API_KEY`. `VITE_API_KEY` must match `ADMIN_API_KEY`; it is embedded at
    build time, so redeploy after changing it.
-3. Deploy. `vercel.json` builds the frontend and bundles `api/index.ts` into
-   `api/index.mjs` with `scripts/build-api-function.mjs`. Because Overpass can
-   be slow, set the function's max duration in the Vercel dashboard if the
-   default is too short.
+3. Deploy. `vercel.json` builds the frontend and bundles
+   `artifacts/api-server/src/vercel.ts` into `api/_bundle.mjs` with
+   `scripts/build-api-function.mjs`. `api/index.js` is the small Vercel function
+   entry that re-exports that bundle. Because Overpass can be slow, set the
+   function's max duration in the Vercel dashboard if the default is too short.
 4. Run `npm run db:push` locally once against the production database.
 
 ## Project layout

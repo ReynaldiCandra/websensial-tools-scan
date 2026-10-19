@@ -4,13 +4,18 @@ Platform all-in-one untuk web developer / digital agency Indonesia: temukan bisn
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080)
-- `pnpm --filter @workspace/agency-crm run dev` — run the frontend (port 20165)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `npm run dev` (or `pnpm dev`) — run API + frontend together (ports 8080 / 20165)
+- `npm run dev:api` — run the API server only (port 8080)
+- `npm run dev:web` — run the frontend only (port 20165)
+- `npm run typecheck` — full typecheck across all packages
+- `npm run build` — typecheck + build all packages
+- `npm test` — API endpoint tests (search + bulk-import; import test needs `DATABASE_URL`)
+- `npm run db:push` — push DB schema changes (dev only)
+- `npm --workspace @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
+- Required env: `DATABASE_URL` — Postgres connection string; `ADMIN_API_KEY` + `VITE_API_KEY` (same value) for API auth in production (see `README.md`)
+
+Both npm and pnpm installs are supported. The local Vite server proxies `/api`
+to `http://localhost:8080`, so no separate proxy is required.
 
 ## Stack
 
@@ -40,12 +45,12 @@ Platform all-in-one untuk web developer / digital agency Indonesia: temukan bisn
 - Preview websites are served as raw HTML at `/preview/:token` directly from the Express API (not the Vite frontend). Token is a 24-char hex string.
 - Prospect source field: `manual` (hand-entered) or `gmaps` (imported from Prospecting Tool / CSV).
 - All numeric DB fields (price, total, rating, dealValue) are stored as Postgres `numeric` → cast to `parseFloat()` before sending to client.
-- The Prospecting Tool uses Overpass API (OpenStreetMap) — free, no API key required, but data coverage varies by city/category.
+- The Prospecting Tool uses Overpass API (OpenStreetMap) first (it carries website/phone tags), then falls back to Photon/Komoot when Overpass is at capacity. Search works even if the database is down; imports and CRM pages require `DATABASE_URL`.
 
 ## Product
 
 - **Dashboard** — Pipeline funnel counts, revenue summary, recent activity feed
-- **Prospecting Tool** — Search bisnis via OpenStreetMap (15 kota, 15 kategori) + CSV import (auto-detect kolom ekspor ekstensi G Maps, dedupe otomatis) + panduan Google Maps
+- **Prospecting Tool** — Search bisnis via OpenStreetMap (20 kota, 19 kategori) + CSV import (auto-detect kolom ekspor ekstensi G Maps, dedupe otomatis) + panduan Google Maps
 - **Prospects** — CRUD prospect/lead dengan filter by status, kategori, search
 - **Pipeline** — Kanban view: Belum Dihubungi → Dihubungi → Demo → Deal → Invoice → Selesai
 - **WA Templates** — 5 template default (Initial, Follow-up, Demo, Proposal, Closing) dengan merge variables

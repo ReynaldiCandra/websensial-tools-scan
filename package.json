@@ -2,11 +2,21 @@
   "name": "workspace",
   "version": "0.0.0",
   "license": "MIT",
+  "workspaces": [
+    "artifacts/*",
+    "lib/*",
+    "scripts"
+  ],
   "scripts": {
-    "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
-    "build": "pnpm run typecheck && pnpm -r --if-present run build",
+    "dev": "node scripts/dev.mjs",
+    "clean": "rm -rf node_modules artifacts/*/node_modules lib/*/node_modules scripts/node_modules artifacts/*/dist lib/*/dist scripts/dist",
+    "dev:api": "npm run dev --workspace @workspace/api-server",
+    "dev:web": "npm run dev --workspace @workspace/agency-crm",
+    "build": "npm run typecheck && npm run build --workspaces --if-present",
     "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
+    "typecheck": "npm run typecheck:libs && npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspace @workspace/api-server",
+    "db:push": "npm run push --workspace @workspace/db"
   },
   "private": true,
   "devDependencies": {

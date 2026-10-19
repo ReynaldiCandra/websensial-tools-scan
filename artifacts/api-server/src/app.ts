@@ -1,10 +1,17 @@
-import express, { type Express } from "express";
+import express, {
+  type Express,
+  type NextFunction,
+  type Request,
+  type Response,
+} from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
+
+app.disable("x-powered-by");
 
 app.use(
   pinoHttp({
@@ -36,5 +43,25 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.text({ type: "text/csv", limit: "5mb" }));
 
 app.use("/api", router);
+
+// Never let Express fall back to its HTML error page: the frontend always
+// expects JSON, and an HTML body is what produced the confusing
+// "Unexpected token '<' ... is not valid JSON" message in the UI.
+app.use((_req: Request, res: Response) => {
+  return res.status(404).json({ error: "Route not found" });
+});
+
+app.use(
+  (err: unknown, _req: Request, res: Response, next: NextFunction) => {
+    if (res.headersSent) return next(err);
+
+    logger.error({ err }, "Unhandled API error");
+    const message = err instanceof Error ? err.message : "Internal server error";
+    return res.status(500).json({
+      error: "Internal server error",
+      detail: process.env.NODE_ENV === "production" ? undefined : message,
+    });
+  },
+);
 
 export default app;

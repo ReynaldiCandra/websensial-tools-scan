@@ -40,6 +40,10 @@ packages:
   - lib/integrations/*
   - scripts
 
+# Link workspace packages for "*" specs as well, so the same dependency specs
+# work with both pnpm and npm (npm workspaces resolve "*" locally too).
+linkWorkspacePackages: true
+
 catalog:
   '@replit/vite-plugin-cartographer': ^0.5.21
   '@replit/vite-plugin-dev-banner': ^0.1.1
@@ -147,7 +151,9 @@ overrides:
   "@expo/ngrok-bin>@expo/ngrok-bin-win32-x64": "-"
   # drizzle-kit uses esbuild internally on an older version that's vulnerable, this overrides it
   "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0"
-  esbuild: "0.27.3"
+  # Keep this in sync with esbuild-plugin-pino's peer range so both npm and
+  # pnpm can install the workspace without --legacy-peer-deps.
+  esbuild: "0.25.8"
 
 allowBuilds:
   esbuild: true

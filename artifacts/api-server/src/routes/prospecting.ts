@@ -1,10 +1,82 @@
 import { Router } from "express";
-import { db, prospectsTable, overpassCacheTable } from "@workspace/db";
+import {
+  db,
+  isDatabaseConfigured,
+  overpassCacheTable,
+  prospectsTable,
+} from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { csvToRecords, type CsvRecord } from "../lib/csv";
+import { logger } from "../lib/logger";
 
 const OVERPASS_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 jam — data bisnis lokal jarang berubah harian
+const CACHE_RETRY_AFTER_FAILURE_MS = 60 * 1000;
+
+// A paused/deleted database should not add a connection attempt to every
+// search. After one failure, skip the cache for a minute before retrying.
+let cacheDisabledUntil = 0;
+
+// Vercel functions here are limited to 60 seconds (see vercel.json), so the
+// whole search must finish before that. Public Overpass mirrors are often at
+// capacity, so try a few of them in order instead of failing on the first 5xx.
+const OVERPASS_ENDPOINTS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+];
+const OVERPASS_ATTEMPT_TIMEOUT_MS = 12_000;
+const OVERPASS_TOTAL_BUDGET_MS = 24_000;
+
+// Photon (Komoot) is built on the same OpenStreetMap data but responds much
+// faster and is far less likely to be at capacity. It does not expose phone or
+// website tags, so Overpass is still tried first for the "no website" filter.
+const PHOTON_ENDPOINT = "https://photon.komoot.io/api/";
+const PHOTON_TIMEOUT_MS = 20_000;
+
+const CATEGORY_KEYWORDS: Record<string, string> = {
+  "Kuliner": "restoran",
+  "Salon & Kecantikan": "salon",
+  "Otomotif": "bengkel",
+  "Fashion": "butik",
+  "Kesehatan": "klinik",
+  "Apotek": "apotek",
+  "Fotografi": "foto",
+  "Laundry": "laundry",
+  "Catering": "catering",
+  "Hotel & Penginapan": "hotel",
+  "Pendidikan": "sekolah",
+  "Toko Elektronik": "elektronik",
+  "Toko Material": "bangunan",
+  "Percetakan": "percetakan",
+  "Furniture": "furniture",
+  "Jasa Umum": "servis",
+  "Gym & Kebugaran": "gym",
+  "Pet Shop & Hewan": "pet shop",
+  "Servis Elektronik": "servis elektronik",
+};
+
+const CATEGORY_PHOTON_TAGS: Record<string, string[]> = {
+  "Kuliner": ["amenity:restaurant", "amenity:cafe", "amenity:fast_food", "amenity:food_court", "amenity:bar", "amenity:pub"],
+  "Salon & Kecantikan": ["shop:hairdresser", "shop:beauty", "shop:cosmetics", "shop:massage"],
+  "Otomotif": ["shop:car_repair", "shop:motorcycle", "shop:tyres", "shop:car", "shop:car_parts"],
+  "Fashion": ["shop:clothes", "shop:shoes", "shop:fashion", "shop:boutique", "shop:bag"],
+  "Kesehatan": ["amenity:clinic", "amenity:dentist", "amenity:doctors", "amenity:hospital"],
+  "Apotek": ["amenity:pharmacy"],
+  "Fotografi": ["shop:photo", "craft:photographer"],
+  "Laundry": ["shop:laundry", "shop:dry_cleaning"],
+  "Catering": ["shop:catering", "craft:caterer"],
+  "Hotel & Penginapan": ["tourism:hotel", "tourism:guest_house", "tourism:hostel", "tourism:motel"],
+  "Pendidikan": ["amenity:school", "amenity:college", "amenity:university", "amenity:language_school"],
+  "Toko Elektronik": ["shop:electronics", "shop:computer", "shop:mobile_phone"],
+  "Toko Material": ["shop:hardware", "shop:doityourself", "shop:building_materials", "shop:paint"],
+  "Percetakan": ["shop:copyshop", "shop:printing"],
+  "Furniture": ["shop:furniture", "shop:interior_decoration"],
+  "Jasa Umum": ["shop:service", "shop:repair", "craft:electrician", "craft:plumber", "craft:carpenter", "craft:locksmith"],
+  "Gym & Kebugaran": ["leisure:fitness_centre", "leisure:sports_centre"],
+  "Pet Shop & Hewan": ["shop:pet", "shop:pet_grooming", "amenity:veterinary"],
+  "Servis Elektronik": ["craft:electronics_repair", "shop:electronics_repair"],
+};
 
 const router = Router();
 
@@ -67,6 +139,36 @@ interface OverpassElement {
   tags?: Record<string, string>;
 }
 
+interface CachedElements {
+  elements: OverpassElement[] | null;
+  stale: boolean;
+  dbAvailable: boolean;
+}
+
+interface PhotonFeature {
+  properties?: {
+    osm_id?: number;
+    osm_type?: string;
+    osm_key?: string;
+    osm_value?: string;
+    name?: string;
+    street?: string;
+    housenumber?: string;
+    city?: string;
+    district?: string;
+    county?: string;
+    state?: string;
+    postcode?: string;
+    country?: string;
+    website?: string;
+    phone?: string;
+  };
+  geometry?: {
+    type?: string;
+    coordinates?: [number, number];
+  };
+}
+
 function buildOverpassQuery(selectors: string[], lat: number, lon: number, radius: number): string {
   const union = selectors
     .map((tags) => `node${tags}(around:${radius},${lat},${lon});way${tags}(around:${radius},${lat},${lon});`)
@@ -91,11 +193,240 @@ function extractPhone(tags: Record<string, string>): string {
   return normalizePhone(raw);
 }
 
+const BooleanQuery = z.preprocess((value) => {
+  if (value === "true" || value === true) return true;
+  if (value === "false" || value === false) return false;
+  return value;
+}, z.boolean());
+
 const SearchQuerySchema = z.object({
   city: z.string(),
   category: z.string(),
-  onlyNoWebsite: z.coerce.boolean().optional().default(true),
+  onlyNoWebsite: BooleanQuery.optional().default(true),
 });
+
+async function readOverpassCache(cacheKey: string): Promise<CachedElements> {
+  if (!isDatabaseConfigured || Date.now() < cacheDisabledUntil) {
+    return { elements: null, stale: false, dbAvailable: false };
+  }
+
+  try {
+    const [cached] = await db
+      .select()
+      .from(overpassCacheTable)
+      .where(eq(overpassCacheTable.cacheKey, cacheKey));
+
+    cacheDisabledUntil = 0;
+
+    if (!cached) {
+      return { elements: null, stale: false, dbAvailable: true };
+    }
+
+    const stale = Date.now() - cached.createdAt.getTime() >= OVERPASS_CACHE_TTL_MS;
+    return {
+      elements: cached.result as OverpassElement[],
+      stale,
+      dbAvailable: true,
+    };
+  } catch (err) {
+    // A paused/deleted database must not break search. Just skip the cache.
+    cacheDisabledUntil = Date.now() + CACHE_RETRY_AFTER_FAILURE_MS;
+    logger.warn(
+      { message: err instanceof Error ? err.message : String(err) },
+      "Prospecting cache read failed; continuing without cache",
+    );
+    return { elements: null, stale: false, dbAvailable: false };
+  }
+}
+
+async function writeOverpassCache(
+  cacheKey: string,
+  elements: OverpassElement[],
+): Promise<void> {
+  if (!isDatabaseConfigured || Date.now() < cacheDisabledUntil) return;
+
+  try {
+    await db
+      .insert(overpassCacheTable)
+      .values({ cacheKey, result: elements })
+      .onConflictDoUpdate({
+        target: overpassCacheTable.cacheKey,
+        set: { result: elements, createdAt: new Date() },
+      });
+
+    cacheDisabledUntil = 0;
+  } catch (err) {
+    cacheDisabledUntil = Date.now() + CACHE_RETRY_AFTER_FAILURE_MS;
+    logger.warn(
+      { message: err instanceof Error ? err.message : String(err) },
+      "Prospecting cache write failed; ignoring",
+    );
+  }
+}
+
+function distanceMeters(
+  lat: number,
+  lon: number,
+  centerLat: number,
+  centerLon: number,
+): number {
+  const dLat = (lat - centerLat) * 111_000;
+  const dLon = (lon - centerLon) * 111_000 * Math.cos((centerLat * Math.PI) / 180);
+  return Math.hypot(dLat, dLon);
+}
+
+async function fetchPhoton(
+  category: string,
+  cityCoords: { lat: number; lon: number; radius: number },
+): Promise<OverpassElement[]> {
+  const params = new URLSearchParams({
+    q: CATEGORY_KEYWORDS[category] ?? category,
+    lat: String(cityCoords.lat),
+    lon: String(cityCoords.lon),
+    limit: "50",
+  });
+
+  for (const tag of CATEGORY_PHOTON_TAGS[category] ?? []) {
+    params.append("osm_tag", tag);
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PHOTON_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${PHOTON_ENDPOINT}?${params}`, {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "websensial-crm/1.0 (prospecting search)",
+      },
+      signal: controller.signal,
+    });
+
+    const body = await response.text();
+    if (!response.ok) {
+      throw new Error(`Photon returned ${response.status}: ${body.slice(0, 160)}`);
+    }
+
+    if (!(response.headers.get("content-type") ?? "").includes("json")) {
+      throw new Error("Photon returned a non-JSON response");
+    }
+
+    const data = JSON.parse(body) as { features?: PhotonFeature[] };
+    if (!Array.isArray(data.features)) {
+      throw new Error("Photon returned an invalid payload");
+    }
+
+    const maxDistance = cityCoords.radius * 1.25;
+    const results: OverpassElement[] = [];
+
+    for (const feature of data.features) {
+      const props = feature.properties ?? {};
+      const coordinates = feature.geometry?.coordinates;
+      if (!props.name || !coordinates) continue;
+
+      const [lon, lat] = coordinates;
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      if (distanceMeters(lat, lon, cityCoords.lat, cityCoords.lon) > maxDistance) {
+        continue;
+      }
+
+      const addressParts = [props.street, props.housenumber, props.city].filter(Boolean);
+
+      results.push({
+        id: Number(props.osm_id ?? 0),
+        type:
+          props.osm_type === "W"
+            ? "way"
+            : props.osm_type === "R"
+              ? "relation"
+              : "node",
+        lat,
+        lon,
+        tags: {
+          name: props.name,
+          phone: props.phone ?? "",
+          website: props.website ?? "",
+          "addr:street": props.street ?? "",
+          "addr:housenumber": props.housenumber ?? "",
+          "addr:city": props.city ?? "",
+          "addr:full": addressParts.join(", "),
+        },
+      });
+    }
+
+    return results;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchOverpass(query: string): Promise<OverpassElement[]> {
+  const deadline = Date.now() + OVERPASS_TOTAL_BUDGET_MS;
+  let lastError: Error | null = null;
+
+  for (const endpoint of OVERPASS_ENDPOINTS) {
+    if (Date.now() >= deadline) {
+      lastError = new Error("Overpass search timed out");
+      break;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      Math.min(OVERPASS_ATTEMPT_TIMEOUT_MS, deadline - Date.now()),
+    );
+
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Accept": "application/json",
+          "User-Agent": "websensial-crm/1.0 (prospecting search)",
+        },
+        body: `data=${encodeURIComponent(query)}`,
+        signal: controller.signal,
+      });
+
+      const body = await response.text();
+
+      if (!response.ok) {
+        lastError = new Error(
+          `Overpass ${new URL(endpoint).host} returned ${response.status}: ${body.slice(0, 160)}`,
+        );
+        logger.warn(lastError.message);
+        continue;
+      }
+
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.includes("json")) {
+        lastError = new Error(
+          `Overpass ${new URL(endpoint).host} returned a non-JSON response`,
+        );
+        logger.warn(lastError.message);
+        continue;
+      }
+
+      const data = JSON.parse(body) as { elements?: OverpassElement[] };
+      return data.elements ?? [];
+    } catch (err) {
+      lastError =
+        controller.signal.aborted
+          ? new Error(`Overpass ${new URL(endpoint).host} timed out`)
+          : err instanceof Error
+            ? err
+            : new Error("Overpass request failed");
+      logger.warn(
+        { message: lastError.message },
+        "Overpass request failed; trying next mirror",
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  throw lastError ?? new Error("All Overpass mirrors are unavailable");
+}
 
 router.get("/prospecting/cities", (_req, res) => {
   return res.json(Object.keys(INDONESIAN_CITIES));
@@ -119,58 +450,93 @@ router.get("/prospecting/search", async (req, res) => {
 
     // Cache key cuma dari city+category (bukan onlyNoWebsite), karena itu cuma filter tampilan
     const cacheKey = `${city}::${category}`;
-    let elements: OverpassElement[];
+    const cached = await readOverpassCache(cacheKey);
 
-    const [cached] = await db
-      .select()
-      .from(overpassCacheTable)
-      .where(eq(overpassCacheTable.cacheKey, cacheKey));
+    let elements: OverpassElement[] | null = cached.stale ? null : cached.elements;
+    let source: "cache" | "photon" | "overpass" = "cache";
 
-    const isCacheFresh = cached && Date.now() - cached.createdAt.getTime() < OVERPASS_CACHE_TTL_MS;
+    if (!elements || cached.stale) {
+      elements = null;
+      let lastError: unknown = null;
+      let emptySource: "overpass" | "photon" | null = null;
 
-    if (isCacheFresh) {
-      elements = cached.result as OverpassElement[];
-    } else {
-      const query = buildOverpassQuery(categoryTags, cityCoords.lat, cityCoords.lon, cityCoords.radius);
-      const url = `https://overpass-api.de/api/interpreter`;
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 20000);
-
-      let overpassRes: Response;
+      // 1) Overpass first: it exposes website/phone tags, which the
+      //    "Hanya yang belum punya website" filter depends on.
       try {
-        overpassRes = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: `data=${encodeURIComponent(query)}`,
-          signal: controller.signal,
-        });
-      } finally {
-        clearTimeout(timeout);
+        const query = buildOverpassQuery(
+          categoryTags,
+          cityCoords.lat,
+          cityCoords.lon,
+          cityCoords.radius,
+        );
+
+        const overpassResults = await fetchOverpass(query);
+        if (overpassResults.length > 0) {
+          elements = overpassResults;
+          source = "overpass";
+        } else {
+          emptySource = "overpass";
+        }
+      } catch (err) {
+        lastError = err;
+        logger.warn(
+          { message: err instanceof Error ? err.message : String(err) },
+          "Overpass search failed; falling back to Photon",
+        );
       }
 
-      if (!overpassRes.ok) {
-        // Overpass lagi error/rate-limit — kalau ada cache lama (walau basi), lebih baik pakai itu daripada gagal total
-        if (cached) {
-          elements = cached.result as OverpassElement[];
-        } else {
-          return res.status(502).json({ error: "Overpass API error", status: overpassRes.status });
+      // 2) Photon fallback: same OSM data, much faster, but without contact
+      //    tags. Search still works when Overpass is at capacity.
+      if (!elements || elements.length === 0) {
+        try {
+          const photonResults = await fetchPhoton(category, cityCoords);
+          if (photonResults.length > 0) {
+            elements = photonResults;
+            source = "photon";
+          } else {
+            emptySource = "photon";
+          }
+        } catch (err) {
+          lastError = err;
+          logger.error(
+            { message: err instanceof Error ? err.message : String(err) },
+            "Photon search failed",
+          );
         }
-      } else {
-        const data = (await overpassRes.json()) as { elements: OverpassElement[] };
-        elements = data.elements ?? [];
+      }
 
-        await db
-          .insert(overpassCacheTable)
-          .values({ cacheKey, result: elements })
-          .onConflictDoUpdate({
-            target: overpassCacheTable.cacheKey,
-            set: { result: elements, createdAt: new Date() },
-          });
+      // Both providers answered successfully, but there was genuinely no
+      // matching business. Return an empty result instead of a scary error.
+      if (!elements && emptySource) {
+        elements = [];
+        source = emptySource;
+      }
+
+      if (elements) {
+        // Only cache Overpass data: it includes website/phone tags, while
+        // Photon results would incorrectly mark websites as unknown.
+        if (source === "overpass") {
+          await writeOverpassCache(cacheKey, elements);
+        }
+      } else if (cached.elements) {
+        // Kalau ada cache basi, lebih baik tampilkan data lama daripada gagal total.
+        logger.warn("Search sources failed; serving stale cached results");
+        elements = cached.elements;
+        source = "cache";
+      } else {
+        const isTimeout =
+          lastError instanceof Error && /timed out|abort/i.test(lastError.message);
+
+        return res.status(isTimeout ? 504 : 502).json({
+          error: isTimeout
+            ? "Pencarian terlalu lama. Sumber data OpenStreetMap sedang lambat — coba lagi sebentar lagi."
+            : "Sumber data OpenStreetMap sedang sibuk. Coba lagi sebentar lagi atau gunakan tab Import CSV.",
+          detail: lastError instanceof Error ? lastError.message : undefined,
+        });
       }
     }
 
-    const results = elements
+    const results = (elements ?? [])
       .filter((el) => el.tags?.name)
       .map((el) => {
         const tags = el.tags!;
@@ -183,9 +549,12 @@ router.get("/prospecting/search", async (req, res) => {
         return {
           name: tags.name,
           phone,
-          address: [tags["addr:street"], tags["addr:housenumber"], tags["addr:city"]]
-            .filter(Boolean)
-            .join(", ") || tags["addr:full"] || null,
+          address:
+            [tags["addr:street"], tags["addr:housenumber"], tags["addr:city"]]
+              .filter(Boolean)
+              .join(", ") ||
+            tags["addr:full"] ||
+            null,
           category,
           hasWebsite,
           website: tags.website || tags["contact:website"] || null,
@@ -201,14 +570,20 @@ router.get("/prospecting/search", async (req, res) => {
       total: results.length,
       city,
       category,
+      cached: source === "cache",
+      source,
+      dbAvailable: cached.dbAvailable,
       results,
     });
   } catch (err: unknown) {
-    if ((err as { name?: string }).name === "AbortError") {
-      return res.status(504).json({ error: "Overpass API timeout. Try a smaller city or different category." });
-    }
-    req.log.error({ err }, "Prospecting search error");
-    return res.status(500).json({ error: "Search failed" });
+    logger.error(
+      { message: err instanceof Error ? err.message : String(err) },
+      "Prospecting search error",
+    );
+    return res.status(500).json({
+      error: "Pencarian gagal karena kesalahan server.",
+      detail: err instanceof Error ? err.message : undefined,
+    });
   }
 });
 
@@ -422,6 +797,13 @@ async function insertProspects(candidates: ParsedProspect[]): Promise<{
 
 router.post("/prospecting/bulk-import", async (req, res) => {
   try {
+    if (!isDatabaseConfigured) {
+      return res.status(503).json({
+        error:
+          "Database belum terhubung. Set DATABASE_URL di .env.local lalu jalankan ulang server.",
+      });
+    }
+
     //--------- Input: either the existing JSON contract, or raw CSV ---------
     // CSV can arrive as Content-Type: text/csv (raw string body, parsed by
     // express.text) or as { csv: "..." } inside a JSON envelope. Header-style
@@ -490,8 +872,11 @@ router.post("/prospecting/bulk-import", async (req, res) => {
       truncated,
     });
   } catch (err) {
-    req.log.error({ err }, "Bulk import error");
-    return res.status(500).json({ error: "Import failed" });
+    logger.error({ err }, "Bulk import error");
+    return res.status(500).json({
+      error: "Import gagal. Pastikan database sudah terhubung dan tabel sudah dibuat.",
+      detail: err instanceof Error ? err.message : undefined,
+    });
   }
 });
 

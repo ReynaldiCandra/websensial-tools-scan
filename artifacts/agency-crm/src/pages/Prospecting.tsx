@@ -21,7 +21,32 @@ import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api-client";
 import { parseBusinessCsv } from "@/lib/csv";
 
-const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+/**
+ * Baca respons API tanpa pernah melempar error JSON.parse yang membingungkan.
+ * Di production, platform hosting bisa mengembalikan halaman teks/HTML ketika
+ * function timeout atau crash (contoh: "A server error has occurred").
+ */
+async function readApiResponse(res: Response): Promise<Record<string, unknown>> {
+  const body = await res.text();
+
+  if (!body.trim()) {
+    throw new Error(
+      res.ok
+        ? "Server mengembalikan respons kosong. Coba lagi."
+        : `Server error (HTTP ${res.status}). Coba lagi sebentar lagi.`,
+    );
+  }
+
+  try {
+    return JSON.parse(body) as Record<string, unknown>;
+  } catch {
+    throw new Error(
+      res.ok
+        ? "Server mengembalikan respons yang tidak valid. Coba lagi."
+        : `Server error (HTTP ${res.status}). Coba lagi sebentar lagi.`,
+    );
+  }
+}
 
 const CITIES = [
   "Jakarta", "Bandung", "Surabaya", "Yogyakarta", "Semarang",
@@ -34,7 +59,7 @@ const CATEGORIES = [
   "Kuliner", "Salon & Kecantikan", "Otomotif", "Fashion", "Kesehatan",
   "Apotek", "Fotografi", "Laundry", "Catering", "Hotel & Penginapan",
   "Pendidikan", "Toko Elektronik", "Toko Material", "Percetakan", "Furniture",
-  "Gym & Kebugaran", "Pet Shop & Hewan", "Servis Elektronik",
+  "Jasa Umum", "Gym & Kebugaran", "Pet Shop & Hewan", "Servis Elektronik",
 ];
 
 interface SearchResult {
@@ -62,7 +87,12 @@ export function Prospecting() {
   const [onlyNoWebsite, setOnlyNoWebsite] = useState(true);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<SearchResult[] | null>(null);
-  const [searchMeta, setSearchMeta] = useState<{ city: string; category: string; total: number } | null>(null);
+  const [searchMeta, setSearchMeta] = useState<{
+    city: string;
+    category: string;
+    total: number;
+    source?: string;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Selection state
@@ -83,12 +113,28 @@ export function Prospecting() {
     try {
       const params = new URLSearchParams({ city, category, onlyNoWebsite: String(onlyNoWebsite) });
       const res = await apiFetch(`/api/prospecting/search?${params}`);
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Pencarian gagal");
-      setResults(json.results);
-      setSearchMeta({ city: json.city, category: json.category, total: json.total });
+      const json = await readApiResponse(res);
+      if (!res.ok) {
+        throw new Error(
+          typeof json.error === "string" ? json.error : `Pencarian gagal (HTTP ${res.status})`,
+        );
+      }
+      if (!Array.isArray(json.results)) {
+        throw new Error("Format respons pencarian tidak valid. Coba lagi.");
+      }
+      setResults(json.results as SearchResult[]);
+      setSearchMeta({
+        city: String(json.city ?? city),
+        category: String(json.category ?? category),
+        total: Number(json.total ?? 0),
+        source: typeof json.source === "string" ? json.source : undefined,
+      });
     } catch (e: unknown) {
-      setError((e as Error).message);
+      const message =
+        e instanceof TypeError
+          ? "Tidak bisa menghubungi server. Pastikan API berjalan (jalankan `npm run dev`)."
+          : (e as Error).message;
+      setError(message || "Pencarian gagal. Coba lagi.");
     } finally {
       setLoading(false);
     }
@@ -135,12 +181,16 @@ export function Prospecting() {
           })),
         }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error);
+      const json = await readApiResponse(res);
+      if (!res.ok) {
+        throw new Error(
+          typeof json.error === "string" ? json.error : `Import gagal (HTTP ${res.status})`,
+        );
+      }
       const skipped =
-        (json.skippedDuplicatesInBatch ?? 0) + (json.skippedExisting ?? 0);
+        Number(json.skippedDuplicatesInBatch ?? 0) + Number(json.skippedExisting ?? 0);
       toast({
-        title: `${json.imported} bisnis berhasil diimport ke pipeline!`,
+        title: `${Number(json.imported ?? 0)} bisnis berhasil diimport ke pipeline!`,
         description: skipped > 0 ? `${skipped} duplikat dilewati otomatis.` : undefined,
       });
       navigate("/prospects");
@@ -276,6 +326,16 @@ export function Prospecting() {
 
           {results !== null && (
             <div className="space-y-3">
+              {searchMeta?.source === "photon" && (
+                <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-400">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <p>
+                    Data dari sumber cadangan (Photon/OpenStreetMap). Info website dan
+                    telepon mungkin belum lengkap — buka link Maps untuk verifikasi sebelum
+                    menghubungi.
+                  </p>
+                </div>
+              )}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <p className="text-sm font-medium">

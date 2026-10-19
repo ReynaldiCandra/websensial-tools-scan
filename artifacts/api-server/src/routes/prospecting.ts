@@ -34,8 +34,17 @@ const OVERPASS_TOTAL_BUDGET_MS = 24_000;
 const PHOTON_ENDPOINT = "https://photon.komoot.io/api/";
 const PHOTON_TIMEOUT_MS = 20_000;
 
-// Outscraper provides Google Maps business data (rating, phone, website).
-// It is optional: without OUTSCRAPER_API_KEY the endpoint keeps using OSM.
+// Serper (google.serper.dev) returns real Google Maps results — name, rating,
+// review count, phone and website — from a single synchronous request. Its
+// free allowance needs no credit card (unlike Outscraper, which blocks the API
+// key until credits are added), so it is the preferred provider.
+const SERPER_ENDPOINT = "https://google.serper.dev/maps";
+const SERPER_TIMEOUT_MS = 20_000;
+const SERPER_LIMIT = 20;
+
+// Outscraper provides the same Google Maps data and stays supported as a
+// fallback for accounts that already have credits. Both are optional: without
+// either key the endpoint keeps using OSM.
 const OUTSCRAPER_ENDPOINT = "https://api.outscraper.cloud/google-maps-search";
 const OUTSCRAPER_TIMEOUT_MS = 45_000;
 const OUTSCRAPER_LIMIT = 20;
@@ -218,6 +227,27 @@ interface OutscraperResponse {
   status?: string;
   data?: OutscraperPlace[][] | OutscraperPlace[];
   error?: string;
+}
+
+interface SerperPlace {
+  title?: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
+  rating?: number;
+  ratingCount?: number;
+  type?: string;
+  types?: string[];
+  website?: string;
+  phoneNumber?: string;
+  cid?: string;
+  placeId?: string;
+}
+
+interface SerperResponse {
+  places?: SerperPlace[];
+  credits?: number;
+  message?: string;
 }
 
 function buildOverpassQuery(selectors: string[], lat: number, lon: number, radius: number): string {
@@ -681,6 +711,85 @@ async function fetchOutscraper(
   }
 }
 
+async function fetchSerper(
+  city: string,
+  category: string,
+): Promise<ProspectSearchResult[]> {
+  const apiKey = process.env.SERPER_API_KEY?.trim();
+  if (!apiKey) throw new Error("SERPER_API_KEY is not configured");
+
+  const keyword = CATEGORY_KEYWORDS[category] ?? category;
+  const query = `${keyword}, ${city}, Indonesia`;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SERPER_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(SERPER_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "X-API-KEY": apiKey,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({ q: query, gl: "id", hl: "id" }),
+      signal: controller.signal,
+    });
+
+    const body = await response.text();
+    if (!response.ok) {
+      throw new Error(`Serper returned ${response.status}: ${body.slice(0, 160)}`);
+    }
+
+    const payload = JSON.parse(body) as SerperResponse;
+    const places = Array.isArray(payload.places) ? payload.places : [];
+
+    return places
+      .filter((place) => Boolean(place.title))
+      .slice(0, SERPER_LIMIT)
+      .map((place) => {
+        const lat = Number.isFinite(Number(place.latitude))
+          ? Number(place.latitude)
+          : null;
+        const lon = Number.isFinite(Number(place.longitude))
+          ? Number(place.longitude)
+          : null;
+        const website = place.website?.trim() || null;
+        const rating =
+          place.rating != null && Number.isFinite(Number(place.rating))
+            ? Number(place.rating).toFixed(1)
+            : null;
+
+        return {
+          name: place.title!,
+          phone: normalizePhone(place.phoneNumber ?? ""),
+          address: place.address ?? null,
+          category: place.type || category,
+          hasWebsite: website !== null,
+          website,
+          mapsUrl: place.cid
+            ? `https://maps.google.com/?cid=${place.cid}`
+            : lat !== null && lon !== null
+              ? `https://maps.google.com/?q=${lat},${lon}`
+              : null,
+          lat,
+          lon,
+          osm_id: 0,
+          placeId: place.placeId ?? null,
+          rating,
+          reviewCount: place.ratingCount != null ? String(place.ratingCount) : null,
+        };
+      });
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new Error("Serper request timed out");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 router.get("/prospecting/cities", (_req, res) => {
   return res.json(Object.keys(INDONESIAN_CITIES));
 });
@@ -704,56 +813,78 @@ router.get("/prospecting/search", async (req, res) => {
     const filterByWebsite = (rows: ProspectSearchResult[]) =>
       rows.filter((row) => (onlyNoWebsite ? !row.hasWebsite : true));
 
-    // Google Maps data (name, rating, phone, website) via Outscraper. This is
-    // the preferred provider when configured; OSM remains the free fallback.
-    if (process.env.OUTSCRAPER_API_KEY?.trim()) {
-      const outscraperCacheKey = `outscraper::${city}::${category}::${OUTSCRAPER_LIMIT}`;
-      const cachedOutscraper = await readProspectCache(outscraperCacheKey);
+    // Google Maps providers (name, rating, phone, website). Serper comes first
+    // because its free allowance needs no card; Outscraper stays as a fallback
+    // for accounts that already hold credits. OSM remains the free fallback.
+    const mapsProviders: {
+      name: "serper" | "outscraper";
+      cacheKey: string;
+      fetch: (city: string, category: string) => Promise<ProspectSearchResult[]>;
+    }[] = [];
 
-      if (cachedOutscraper.results && !cachedOutscraper.stale) {
-        const results = filterByWebsite(cachedOutscraper.results);
+    if (process.env.SERPER_API_KEY?.trim()) {
+      mapsProviders.push({
+        name: "serper",
+        cacheKey: `serper::${city}::${category}::${SERPER_LIMIT}`,
+        fetch: fetchSerper,
+      });
+    }
+
+    if (process.env.OUTSCRAPER_API_KEY?.trim()) {
+      mapsProviders.push({
+        name: "outscraper",
+        cacheKey: `outscraper::${city}::${category}::${OUTSCRAPER_LIMIT}`,
+        fetch: fetchOutscraper,
+      });
+    }
+
+    for (const provider of mapsProviders) {
+      const cachedProvider = await readProspectCache(provider.cacheKey);
+
+      if (cachedProvider.results && !cachedProvider.stale) {
+        const results = filterByWebsite(cachedProvider.results);
         return res.json({
           total: results.length,
           city,
           category,
           cached: true,
-          source: "outscraper",
-          dbAvailable: cachedOutscraper.dbAvailable,
+          source: provider.name,
+          dbAvailable: cachedProvider.dbAvailable,
           results,
         });
       }
 
       try {
-        const outscraperResults = await fetchOutscraper(city, category);
-        if (outscraperResults.length > 0) {
-          await writeProspectCache(outscraperCacheKey, outscraperResults);
-          const results = filterByWebsite(outscraperResults);
+        const providerResults = await provider.fetch(city, category);
+        if (providerResults.length > 0) {
+          await writeProspectCache(provider.cacheKey, providerResults);
+          const results = filterByWebsite(providerResults);
           return res.json({
             total: results.length,
             city,
             category,
             cached: false,
-            source: "outscraper",
-            dbAvailable: cachedOutscraper.dbAvailable,
+            source: provider.name,
+            dbAvailable: cachedProvider.dbAvailable,
             results,
           });
         }
-        logger.warn("Outscraper returned no places; falling back to OSM");
+        logger.warn(`${provider.name} returned no places; trying next source`);
       } catch (err) {
         logger.warn(
           { message: err instanceof Error ? err.message : String(err) },
-          "Outscraper search failed; falling back to OSM",
+          `${provider.name} search failed; trying next source`,
         );
 
-        if (cachedOutscraper.results) {
-          const results = filterByWebsite(cachedOutscraper.results);
+        if (cachedProvider.results) {
+          const results = filterByWebsite(cachedProvider.results);
           return res.json({
             total: results.length,
             city,
             category,
             cached: true,
-            source: "outscraper",
-            dbAvailable: cachedOutscraper.dbAvailable,
+            source: provider.name,
+            dbAvailable: cachedProvider.dbAvailable,
             results,
           });
         }

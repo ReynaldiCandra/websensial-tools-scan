@@ -16,12 +16,14 @@ before(async () => {
   process.env.NODE_ENV = "production";
   process.env.LOG_LEVEL = "silent";
   process.env.ADMIN_API_KEY = API_KEY;
+  delete process.env.SERPER_API_KEY;
   delete process.env.OUTSCRAPER_API_KEY;
 
   ({ default: app } = await import("../app"));
 });
 
 afterEach(() => {
+  delete process.env.SERPER_API_KEY;
   delete process.env.OUTSCRAPER_API_KEY;
   globalThis.fetch = originalFetch;
 });
@@ -170,6 +172,65 @@ describe("GET /api/prospecting/search", () => {
     assert.equal(res.body.total, 1);
     assert.equal(res.body.results[0].name, "Photon Laundry");
     assert.equal(res.body.results[0].hasWebsite, false);
+  });
+
+  it("prefers Serper Google Maps data when configured", async () => {
+    process.env.SERPER_API_KEY = "test-serper-key";
+    // Also configured: Serper must win so the free allowance is used first.
+    process.env.OUTSCRAPER_API_KEY = "test-outscraper-key";
+
+    let sentBody: unknown = null;
+    let sentApiKey: string | undefined;
+
+    mockFetch(async (url, init) => {
+      if (url === "https://google.serper.dev/maps") {
+        sentBody = init?.body ? JSON.parse(String(init.body)) : null;
+        sentApiKey = (init?.headers as Record<string, string> | undefined)?.["X-API-KEY"];
+        return jsonResponse({
+          places: [
+            {
+              title: "Butik Serper",
+              address: "Jl. Braga No. 2",
+              latitude: -6.9175,
+              longitude: 107.6191,
+              rating: 4.8,
+              ratingCount: 120,
+              type: "Clothing store",
+              phoneNumber: "+62 812-3456-7890",
+              cid: "998877",
+              placeId: "serper-place-1",
+            },
+            {
+              title: "Butik Online",
+              address: "Jl. Dago No. 3",
+              website: "https://butik.example",
+              rating: 4.6,
+              ratingCount: 45,
+              cid: "998878",
+              placeId: "serper-place-2",
+            },
+          ],
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    const res = await request(app)
+      .get("/api/prospecting/search")
+      .set("x-api-key", API_KEY)
+      .query({ city: "Bandung", category: "Fashion" });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.source, "serper");
+    assert.equal(res.body.total, 1);
+    assert.equal(res.body.results[0].name, "Butik Serper");
+    assert.equal(res.body.results[0].phone, "081234567890");
+    assert.equal(res.body.results[0].rating, "4.8");
+    assert.equal(res.body.results[0].reviewCount, "120");
+    assert.equal(res.body.results[0].hasWebsite, false);
+    assert.equal(res.body.results[0].mapsUrl, "https://maps.google.com/?cid=998877");
+    assert.equal(sentApiKey, "test-serper-key");
+    assert.deepEqual(sentBody, { q: "butik, Bandung, Indonesia", gl: "id", hl: "id" });
   });
 
   it("uses Outscraper Google Maps data when configured", async () => {

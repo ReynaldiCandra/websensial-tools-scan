@@ -261,7 +261,7 @@ export function Prospecting() {
             <CardHeader className="pb-4">
               <CardTitle className="text-base">Filter Pencarian</CardTitle>
               <CardDescription>
-                Data dari OpenStreetMap — mencakup ribuan bisnis di kota-kota besar Indonesia.
+                Data dari Google Maps (nama, rating, nomor HP, status website) — atau OpenStreetMap bila API key belum aktif.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -346,7 +346,7 @@ export function Prospecting() {
                   </p>
                   {searchMeta?.source && (
                     <Badge variant="outline" className="text-[10px] shrink-0">
-                      {searchMeta.source === "outscraper"
+                      {searchMeta.source === "serper" || searchMeta.source === "outscraper"
                         ? "Google Maps"
                         : searchMeta.source === "photon"
                           ? "Photon (cadangan)"

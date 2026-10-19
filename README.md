@@ -92,10 +92,16 @@ npm test
 
 ## Prospecting search
 
-The search endpoint tries Overpass API first (it includes website/phone tags)
-and falls back to Photon (Komoot) when Overpass is at capacity. Results from
-Photon do not include website/phone tags, so every result is marked as
-"belum ada website"; Overpass results are more accurate.
+When `SERPER_API_KEY` is set, the search endpoint pulls real Google Maps
+business data (name, rating, review count, phone, website) from Serper. If
+`SERPER_API_KEY` is missing or Serper fails, `OUTSCRAPER_API_KEY` is tried, and
+the endpoint finally falls back to OpenStreetMap: Overpass API first (it
+includes website/phone tags), then Photon (Komoot) when Overpass is at
+capacity. Results from Photon do not include website/phone tags, so every
+result is marked as "belum ada website"; Overpass results are more accurate.
+
+Google Maps results are cached for 24 hours so repeated clicks on the same
+city + category do not consume provider credits.
 
 Search **works even when the database is unavailable**. Saving prospects,
 importing to the pipeline, and the CRM pages require `DATABASE_URL`.
@@ -111,10 +117,12 @@ If you see an error in the Search tab:
 1. Push the repo to GitHub and import it in Vercel.
 2. Add these environment variables in **Project → Settings → Environment
    Variables** (Production and Preview): `DATABASE_URL`, `ADMIN_API_KEY`,
-   `VITE_API_KEY`, and `OUTSCRAPER_API_KEY`. `VITE_API_KEY` must match
+   `VITE_API_KEY`, and `SERPER_API_KEY`. `VITE_API_KEY` must match
    `ADMIN_API_KEY`; it is embedded at build time, so redeploy after changing it.
-   `OUTSCRAPER_API_KEY` enables Google Maps data (rating, phone, website);
-   without it the search falls back to OpenStreetMap.
+   `SERPER_API_KEY` enables Google Maps data (rating, phone, website) and needs
+   no credit card (2,500 free queries at https://serper.dev). `OUTSCRAPER_API_KEY`
+   is still accepted as a fallback; without either key the search uses
+   OpenStreetMap.
 3. Deploy. `vercel.json` builds the frontend and bundles
    `artifacts/api-server/src/vercel.ts` into `api/_bundle.mjs` with
    `scripts/build-api-function.mjs`. `api/index.js` is the small Vercel function

@@ -13,6 +13,7 @@ import {
   Moon,
   Search,
   Bell,
+  BookOpen,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -22,16 +23,17 @@ import { useGetSettings } from "@workspace/api-client-react";
 
 const mainNavItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/prospecting", label: "Prospecting", icon: MapPin },
-  { href: "/prospects", label: "Prospects", icon: Users },
+  { href: "/panduan", label: "Panduan", icon: BookOpen },
+  { href: "/prospecting", label: "Cari Prospek", icon: MapPin },
+  { href: "/prospects", label: "Prospek", icon: Users },
   { href: "/pipeline", label: "Pipeline", icon: KanbanSquare },
-  { href: "/templates", label: "WA Templates", icon: MessageSquareText },
-  { href: "/invoices", label: "Invoices", icon: FileText },
-  { href: "/packages", label: "Packages", icon: Package },
+  { href: "/templates", label: "Template WA", icon: MessageSquareText },
+  { href: "/invoices", label: "Invoice", icon: FileText },
+  { href: "/packages", label: "Paket", icon: Package },
 ];
 
 const preferenceNavItems = [
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/settings", label: "Pengaturan", icon: Settings },
 ];
 
 const navItems = [...mainNavItems, ...preferenceNavItems];
@@ -111,11 +113,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
         />
       </div>
       <div className="flex-1 flex flex-col gap-6 px-3">
-        <NavGroup title="Main Menu" items={mainNavItems} location={location} />
-        <NavGroup title="Preferences" items={preferenceNavItems} location={location} />
+        <NavGroup title="Menu Utama" items={mainNavItems} location={location} />
+        <NavGroup title="Preferensi" items={preferenceNavItems} location={location} />
       </div>
       <div className="flex items-center justify-between border-t border-border px-4 pt-3">
-        <span className="text-xs text-muted-foreground">Theme</span>
+        <span className="text-xs text-muted-foreground">Tema</span>
         <ThemeToggle />
       </div>
     </div>
@@ -143,15 +145,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </Sheet>
             <img src="/websensial-logo.png" alt="Websensial" className="h-7 w-auto object-contain md:hidden" />
             <div className="hidden md:flex flex-col min-w-0">
-              <span className="text-sm font-semibold truncate">Welcome back, {agencyName} 👋</span>
-              <span className="text-xs text-muted-foreground">Here's what's happening today.</span>
+              <span className="text-sm font-semibold truncate">Selamat datang, {agencyName} 👋</span>
+              <span className="text-xs text-muted-foreground">Ringkasan aktivitas Crm hari ini.</span>
             </div>
           </div>
 
           <div className="hidden md:flex flex-1 max-w-sm">
             <div className="relative w-full">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Search anything" className="pl-9 bg-background/60" />
+              <Input placeholder="Cari apa saja…" className="pl-9 bg-background/60" />
             </div>
           </div>
 

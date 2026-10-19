@@ -84,7 +84,7 @@ export function Prospecting() {
       const params = new URLSearchParams({ city, category, onlyNoWebsite: String(onlyNoWebsite) });
       const res = await apiFetch(`/api/prospecting/search?${params}`);
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Search failed");
+      if (!res.ok) throw new Error(json.error || "Pencarian gagal");
       setResults(json.results);
       setSearchMeta({ city: json.city, category: json.category, total: json.total });
     } catch (e: unknown) {

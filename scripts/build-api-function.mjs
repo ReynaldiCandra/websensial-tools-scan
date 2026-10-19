@@ -1,7 +1,13 @@
-import { build as esbuild } from "esbuild";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+// esbuild is a dependency of artifacts/api-server — resolve from there so this
+// script works regardless of where it is invoked from.
+const requireFromApiServer = createRequire(
+  path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../artifacts/api-server/package.json"),
+);
+const { build: esbuild } = await import(requireFromApiServer.resolve("esbuild"));
 
 globalThis.require = createRequire(import.meta.url);
 

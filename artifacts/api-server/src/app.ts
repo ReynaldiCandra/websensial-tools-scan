@@ -9,6 +9,10 @@ const app: Express = express();
 app.use(
   pinoHttp({
     logger,
+    // Serverless cold starts must never crash on pino worker threads:
+    // fall back to sync transport-free logging if workers fail to spawn.
+    autoLogging: false,
+    quietReqLogger: true,
     serializers: {
       req(req) {
         return {

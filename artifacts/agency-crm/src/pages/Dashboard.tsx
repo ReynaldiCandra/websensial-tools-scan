@@ -7,35 +7,35 @@ import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } fro
 const statCards = [
   {
     key: "totalProspects",
-    label: "Total Prospects",
+    label: "Total Prospek",
     icon: Users,
     color: "text-blue-600 bg-blue-500/10 dark:text-blue-400 dark:bg-blue-400/10",
     format: (summary: any) => summary?.totalProspects ?? 0,
-    sub: (summary: any) => `+${summary?.thisMonthProspects ?? 0} this month`,
+    sub: (summary: any) => `+${summary?.thisMonthProspects ?? 0} bulan ini`,
   },
   {
     key: "totalDeals",
-    label: "Deals Closed",
+    label: "Deal Diclose",
     icon: Target,
     color: "text-emerald-600 bg-emerald-500/10 dark:text-emerald-400 dark:bg-emerald-400/10",
     format: (summary: any) => summary?.totalDeals ?? 0,
-    sub: (summary: any) => `+${summary?.thisMonthDeals ?? 0} this month`,
+    sub: (summary: any) => `+${summary?.thisMonthDeals ?? 0} bulan ini`,
   },
   {
     key: "totalRevenue",
-    label: "Revenue",
+    label: "Pendapatan",
     icon: DollarSign,
     color: "text-amber-600 bg-amber-500/10 dark:text-amber-400 dark:bg-amber-400/10",
     format: (summary: any) => `Rp ${(summary?.totalRevenue ?? 0).toLocaleString("id-ID")}`,
-    sub: () => "Lifetime value tracked",
+    sub: () => "Nilai semua transaksi tercatat",
   },
   {
     key: "conversionRate",
-    label: "Conversion Rate",
+    label: "Tingkat Konversi",
     icon: Activity,
     color: "text-violet-600 bg-violet-500/10 dark:text-violet-400 dark:bg-violet-400/10",
     format: (summary: any) => `${summary?.conversionRate?.toFixed(1) ?? 0}%`,
-    sub: () => "Deals per prospect",
+    sub: () => "Deal atas tiap prospek",
   },
 ];
 
@@ -76,7 +76,7 @@ export function Dashboard() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">Overview of your prospecting pipeline and recent activities.</p>
+        <p className="text-muted-foreground mt-1">Ringkasan pipeline prospek dan aktivitas terbaru Anda.</p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -108,7 +108,7 @@ export function Dashboard() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
         <Card className="col-span-4">
           <CardHeader>
-            <CardTitle>Pipeline Overview</CardTitle>
+            <CardTitle>Ringkasan Pipeline</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoadingPipeline ? (
@@ -135,7 +135,7 @@ export function Dashboard() {
 
         <Card className="col-span-3">
           <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
+            <CardTitle>Aktivitas Terbaru</CardTitle>
           </CardHeader>
           <CardContent>
             {isLoadingActivities ? (
@@ -146,7 +146,7 @@ export function Dashboard() {
               </div>
             ) : activities?.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                No recent activity. Time to hustle!
+                Belum ada aktivitas. Saatnya beraksi!
               </div>
             ) : (
               <div className="space-y-4">

@@ -7,6 +7,7 @@ import { Layout } from "@/components/Layout";
 import NotFound from "@/pages/not-found";
 
 import { Dashboard } from "@/pages/Dashboard";
+import { Panduan } from "@/pages/Panduan";
 import { Prospects } from "@/pages/Prospects";
 import { ProspectDetail } from "@/pages/ProspectDetail";
 import { Pipeline } from "@/pages/Pipeline";
@@ -23,6 +24,7 @@ function Router() {
     <Layout>
       <Switch>
         <Route path="/" component={Dashboard} />
+        <Route path="/panduan" component={Panduan} />
         <Route path="/prospecting" component={Prospecting} />
         <Route path="/prospects" component={Prospects} />
         <Route path="/prospects/:id" component={ProspectDetail} />

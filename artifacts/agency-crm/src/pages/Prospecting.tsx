@@ -27,12 +27,14 @@ const CITIES = [
   "Jakarta", "Bandung", "Surabaya", "Yogyakarta", "Semarang",
   "Medan", "Denpasar", "Makassar", "Palembang", "Bogor",
   "Depok", "Tangerang", "Bekasi", "Malang", "Solo",
+  "Padang", "Manado", "Pontianak", "Balikpapan", "Pekanbaru",
 ];
 
 const CATEGORIES = [
   "Kuliner", "Salon & Kecantikan", "Otomotif", "Fashion", "Kesehatan",
   "Apotek", "Fotografi", "Laundry", "Catering", "Hotel & Penginapan",
   "Pendidikan", "Toko Elektronik", "Toko Material", "Percetakan", "Furniture",
+  "Gym & Kebugaran", "Pet Shop & Hewan", "Servis Elektronik",
 ];
 
 interface SearchResult {
@@ -44,6 +46,10 @@ interface SearchResult {
   website: string | null;
   mapsUrl: string | null;
   osm_id: number;
+  rating?: string | null;
+  reviewCount?: string | null;
+  ownerName?: string | null;
+  currentWebsite?: string | null;
 }
 
 export function Prospecting() {
@@ -123,6 +129,9 @@ export function Prospecting() {
             category: r.category,
             hasWebsite: r.hasWebsite,
             mapsUrl: r.mapsUrl ?? undefined,
+            rating: r.rating ?? undefined,
+            ownerName: r.ownerName ?? undefined,
+            currentWebsite: r.currentWebsite ?? undefined,
           })),
         }),
       });
@@ -152,9 +161,13 @@ export function Prospecting() {
       address: b.address,
       category: b.category,
       hasWebsite: b.hasWebsite,
-      website: null,
+      website: b.currentWebsite,
       mapsUrl: b.mapsUrl,
       osm_id: i,
+      rating: b.rating,
+      reviewCount: b.reviewCount,
+      ownerName: b.ownerName,
+      currentWebsite: b.currentWebsite,
     }));
     setCsvParsed(parsed);
     setCsvSelected(new Set(parsed.map((_, i) => i)));
@@ -459,7 +472,11 @@ export function Prospecting() {
                         <Badge variant="outline" className="text-xs">{r.category}</Badge>
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {[r.phone, r.address].filter(Boolean).join(" · ")}
+                        {[
+                          r.phone,
+                          r.rating ? `⭐ ${r.rating}` : null,
+                          r.address,
+                        ].filter(Boolean).join(" · ")}
                       </p>
                     </div>
                     <Button

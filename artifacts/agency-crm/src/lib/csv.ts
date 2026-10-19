@@ -8,21 +8,24 @@
  */
 
 const ALIASES: Record<string, string[]> = {
-  businessName: ["business name", "businessname", "name", "title", "company", "nama bisnis", "nama"],
+  businessName: ["business name", "businessname", "name", "title", "company", "firm name", "nama bisnis", "nama"],
   phone: [
     "phone",
     "phone number",
     "phone_1",
     "phones",
+    "primary phone",
     "no hp",
     "nomor hp",
     "no. hp",
     "telepon",
     "nomor telepon",
     "contact number",
+    "contact",
+    "whatsapp",
     "kontak",
   ],
-  website: ["website", "website url", "web site", "situs web", "url website", "web"],
+  website: ["website", "website url", "web site", "site", "domain", "situs web", "url website", "web"],
   mapsUrl: [
     "google maps",
     "google maps url",
@@ -32,11 +35,25 @@ const ALIASES: Record<string, string[]> = {
     "link maps",
     "gmaps url",
     "google maps profile",
+    "maps profile",
+    "place url",
     "plus code url",
   ],
-  address: ["address", "alamat", "alamat lengkap"],
-  category: ["category", "category type", "type", "kategori", "jenis"],
-  rating: ["rating", "skor"],
+  address: ["address", "address 1", "full address", "alamat", "alamat lengkap"],
+  category: ["category", "category type", "type", "business type", "primary category", "kategori", "jenis"],
+  rating: ["rating", "rating value", "stars", "bintang", "skor"],
+  reviews: [
+    "reviews",
+    "review count",
+    "reviews count",
+    "number of reviews",
+    "jumlah review",
+    "total review",
+    "ulasan",
+  ],
+  ownerName: ["owner", "owner name", "business owner", "contact name", "pemilik", "nama pemilik"],
+  plusCode: ["plus code", "plus_code", "open location code"],
+  email: ["email", "e-mail", "contact email", "surel"],
 };
 
 export interface ParsedBusiness {
@@ -46,6 +63,10 @@ export interface ParsedBusiness {
   category: string;
   hasWebsite: boolean;
   mapsUrl: string | null;
+  rating: string | null;
+  reviewCount: string | null;
+  ownerName: string | null;
+  currentWebsite: string | null;
 }
 
 function normHeader(header: string): string {
@@ -147,6 +168,14 @@ export function parseBusinessCsv(text: string): ParsedBusiness[] {
     if (!name) continue;
 
     const website = (record.website ?? "").trim();
+    const ratingRaw = (record.rating ?? "").trim();
+    const ratingValue = ratingRaw ? Number(ratingRaw.replace(",", ".")) : null;
+    const rating = ratingValue != null && !Number.isNaN(ratingValue) && ratingValue >= 0 && ratingValue <= 5
+      ? ratingValue.toFixed(1)
+      : null;
+    const reviewDigits = (record.reviews ?? "").replace(/[^\d]/g, "");
+    const ownerName = (record.ownerName ?? "").trim() || null;
+
     results.push({
       name,
       phone: normalizePhone(record.phone ?? ""),
@@ -154,6 +183,10 @@ export function parseBusinessCsv(text: string): ParsedBusiness[] {
       category: record.category ? record.category.trim() : "Umum",
       hasWebsite: website !== "",
       mapsUrl: record.mapsUrl ? record.mapsUrl.trim() : null,
+      rating,
+      reviewCount: reviewDigits ? String(Number(reviewDigits)) : null,
+      ownerName,
+      currentWebsite: website || null,
     });
   }
   return results;

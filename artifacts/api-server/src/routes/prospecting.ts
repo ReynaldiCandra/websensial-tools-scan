@@ -24,25 +24,38 @@ const INDONESIAN_CITIES: Record<string, { lat: number; lon: number; radius: numb
   "Bekasi": { lat: -6.2349, lon: 106.9896, radius: 8000 },
   "Malang": { lat: -7.9666, lon: 112.6326, radius: 8000 },
   "Solo": { lat: -7.5755, lon: 110.8243, radius: 8000 },
+  "Padang": { lat: -0.9471, lon: 100.4172, radius: 8000 },
+  "Manado": { lat: 1.4748, lon: 124.8420, radius: 8000 },
+  "Pontianak": { lat: -0.0263, lon: 109.3425, radius: 8000 },
+  "Balikpapan": { lat: -1.2379, lon: 116.8529, radius: 8000 },
+  "Pekanbaru": { lat: 0.5071, lon: 101.4478, radius: 8000 },
 };
 
-const CATEGORY_TAGS: Record<string, string> = {
-  "Kuliner": `["amenity"~"restaurant|cafe|fast_food|food_court|bar"]`,
-  "Salon & Kecantikan": `["shop"~"hairdresser|beauty|cosmetics|massage"]`,
-  "Otomotif": `["shop"~"car_repair|motorcycle|tyres|car"]`,
-  "Fashion": `["shop"~"clothes|shoes|fashion|boutique"]`,
-  "Kesehatan": `["amenity"~"clinic|dentist|pharmacy|hospital"]["healthcare"]`,
-  "Apotek": `["amenity"="pharmacy"]`,
-  "Fotografi": `["shop"="photo"]`,
-  "Laundry": `["shop"="laundry"]`,
-  "Catering": `["shop"~"catering|food"]`,
-  "Hotel & Penginapan": `["tourism"~"hotel|guest_house|hostel|motel"]`,
-  "Pendidikan": `["amenity"~"school|college|university|language_school"]`,
-  "Toko Elektronik": `["shop"="electronics"]`,
-  "Toko Material": `["shop"~"hardware|doityourself|building_materials"]`,
-  "Percetakan": `["shop"="copyshop"]`,
-  "Furniture": `["shop"~"furniture|interior_decoration"]`,
-  "Jasa Umum": `["shop"~"service|repair"]["craft"]`,
+/**
+ * Each category maps to one or more Overpass selectors. Multi-key alternation
+ * (e.g. pharmacy by amenity OR chemist by shop) is expressed as separate
+ * selectors — Overpass has no OR across different keys inside one selector.
+ */
+const CATEGORY_TAGS: Record<string, string[]> = {
+  "Kuliner": [`["amenity"~"restaurant|cafe|fast_food|food_court|bar|ice_cream|bakery"]`],
+  "Salon & Kecantikan": [`["shop"~"hairdresser|beauty|cosmetics|massage|nails|spa"]`],
+  "Otomotif": [`["shop"~"car_repair|motorcycle|tyres|car|car_parts"]`],
+  "Fashion": [`["shop"~"clothes|shoes|fashion|boutique|jewelry|bags|tailor"]`],
+  "Kesehatan": [`["amenity"~"clinic|dentist|hospital|doctors|nursing_home"]`],
+  "Apotek": [`["amenity"="pharmacy"]`, `["shop"~"chemist|drugstore"]`],
+  "Fotografi": [`["shop"="photo"]`],
+  "Laundry": [`["shop"~"laundry|dry_cleaning"]`],
+  "Catering": [`["shop"~"catering"]`, `["craft"~"caterer"]`],
+  "Hotel & Penginapan": [`["tourism"~"hotel|guest_house|hostel|motel|apartment"]`],
+  "Pendidikan": [`["amenity"~"school|college|university|language_school|training|kindergarten"]`],
+  "Toko Elektronik": [`["shop"~"electronics|computer|mobile_phone"]`],
+  "Toko Material": [`["shop"~"hardware|doityourself|building_materials|paint|tiles"]`],
+  "Percetakan": [`["shop"~"copyshop|print|digital_printing"]`],
+  "Furniture": [`["shop"~"furniture|interior_decoration|curtain|kitchen"]`],
+  "Jasa Umum": [`["craft"~"plumber|electrician|carpenter|handicraft|sawmill|stonemason"]`, `["shop"~"service|repair"]`],
+  "Gym & Kebugaran": [`["leisure"~"fitness_centre|sports_centre"]`],
+  "Pet Shop & Hewan": [`["shop"~"pet|pet_grooming"]`, `["amenity"="veterinary"]`],
+  "Servis Elektronik": [`["craft"~"electronics_repair"]`, `["shop"~"electronics_repair"]`],
 };
 
 interface OverpassElement {
@@ -54,8 +67,11 @@ interface OverpassElement {
   tags?: Record<string, string>;
 }
 
-function buildOverpassQuery(tags: string, lat: number, lon: number, radius: number): string {
-  return `[out:json][timeout:25];(node${tags}(around:${radius},${lat},${lon});way${tags}(around:${radius},${lat},${lon}););out center 50;`;
+function buildOverpassQuery(selectors: string[], lat: number, lon: number, radius: number): string {
+  const union = selectors
+    .map((tags) => `node${tags}(around:${radius},${lat},${lon});way${tags}(around:${radius},${lat},${lon});`)
+    .join("");
+  return `[out:json][timeout:30];(${union});out center 200;`;
 }
 
 /**
@@ -71,7 +87,7 @@ export function normalizePhone(raw: string): string {
 }
 
 function extractPhone(tags: Record<string, string>): string {
-  const raw = tags["phone"] || tags["contact:phone"] || tags["contact:mobile"] || "";
+  const raw = tags["phone"] || tags["contact:phone"] || tags["contact:mobile"] || tags["contact:whatsapp"] || "";
   return normalizePhone(raw);
 }
 
@@ -96,10 +112,10 @@ router.get("/prospecting/search", async (req, res) => {
 
     const { city, category, onlyNoWebsite } = parsed.data;
     const cityCoords = INDONESIAN_CITIES[city];
-    const categoryTag = CATEGORY_TAGS[category];
+    const categoryTags = CATEGORY_TAGS[category];
 
     if (!cityCoords) return res.status(400).json({ error: `City '${city}' not supported` });
-    if (!categoryTag) return res.status(400).json({ error: `Category '${category}' not supported` });
+    if (!categoryTags) return res.status(400).json({ error: `Category '${category}' not supported` });
 
     // Cache key cuma dari city+category (bukan onlyNoWebsite), karena itu cuma filter tampilan
     const cacheKey = `${city}::${category}`;
@@ -115,7 +131,7 @@ router.get("/prospecting/search", async (req, res) => {
     if (isCacheFresh) {
       elements = cached.result as OverpassElement[];
     } else {
-      const query = buildOverpassQuery(categoryTag, cityCoords.lat, cityCoords.lon, cityCoords.radius);
+      const query = buildOverpassQuery(categoryTags, cityCoords.lat, cityCoords.lon, cityCoords.radius);
       const url = `https://overpass-api.de/api/interpreter`;
 
       const controller = new AbortController();
@@ -205,6 +221,9 @@ const BulkImportSchema = z.object({
       category: z.string().optional().default("Umum"),
       hasWebsite: z.boolean().optional().default(false),
       mapsUrl: z.string().optional(),
+      rating: z.string().optional(),
+      ownerName: z.string().optional(),
+      currentWebsite: z.string().optional(),
     })
   ),
 });
@@ -218,13 +237,17 @@ const MAX_IMPORT_ROWS = 500;
  * and the manual sheet layout documented in the CRM UI.
  */
 const CSV_ALIASES: Record<string, string[]> = {
-  businessName: ["business name", "businessname", "name", "title", "company", "nama bisnis", "nama"],
-  phone: ["phone", "phone number", "phone_1", "phones", "no hp", "nomor hp", "no. hp", "telepon", "nomor telepon", "contact number", "kontak"],
-  website: ["website", "website url", "web site", "situs web", "url website", "web"],
-  mapsUrl: ["google maps", "google maps url", "google maps link", "maps url", "maps link", "link maps", "gmaps url", "google maps profile", "plus code url"],
-  address: ["address", "alamat", "alamat lengkap"],
-  category: ["category", "category type", "type", "kategori", "jenis"],
-  rating: ["rating", "skor"],
+  businessName: ["business name", "businessname", "name", "title", "company", "firm name", "nama bisnis", "nama"],
+  phone: ["phone", "phone number", "phone_1", "phones", "primary phone", "no hp", "nomor hp", "no. hp", "telepon", "nomor telepon", "contact number", "contact", "whatsapp", "kontak"],
+  website: ["website", "website url", "web site", "site", "domain", "situs web", "url website", "web"],
+  mapsUrl: ["google maps", "google maps url", "google maps link", "maps url", "maps link", "link maps", "gmaps url", "google maps profile", "maps profile", "place url", "plus code url"],
+  address: ["address", "address 1", "full address", "alamat", "alamat lengkap"],
+  category: ["category", "category type", "type", "business type", "primary category", "kategori", "jenis"],
+  rating: ["rating", "rating value", "stars", "bintang", "skor"],
+  reviews: ["reviews", "review count", "reviews count", "number of reviews", "jumlah review", "total review", "ulasan"],
+  ownerName: ["owner", "owner name", "business owner", "contact name", "pemilik", "nama pemilik"],
+  plusCode: ["plus code", "plus_code", "open location code"],
+  email: ["email", "e-mail", "contact email", "surel"],
 };
 
 interface ParsedProspect {
@@ -234,6 +257,33 @@ interface ParsedProspect {
   category: string;
   hasWebsite: boolean;
   mapsUrl: string | null;
+  rating: string | null;
+  reviewCount: string | null;
+  ownerName: string | null;
+  currentWebsite: string | null;
+}
+
+/** Schema stores rating as numeric(2,1); accept `4.5`, `4,5`, or "4". */
+function parseRating(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const value = Number(raw.trim().replace(",", "."));
+  if (Number.isNaN(value) || value < 0 || value > 5) return null;
+  return value.toFixed(1);
+}
+
+/** Review counts arrive as "120", "1.2K", "1,205" — keep bare digits only. */
+function parseReviewCount(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const digits = raw.replace(/[^\d]/g, "");
+  return digits === "" ? null : String(Number(digits));
+}
+
+/**
+ * Dedup key for websites: lowercase, no protocol, no `www.`, no trailing
+ * slash — so `https://Example.com/` and `example.com` collide.
+ */
+function normalizeWebsiteKey(url: string): string {
+  return url.toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/+$/, "").trim();
 }
 
 function willImportRecord(record: CsvRecord): ParsedProspect | null {
@@ -243,6 +293,10 @@ function willImportRecord(record: CsvRecord): ParsedProspect | null {
   const phone = normalizePhone(record.phone ?? "");
   const mapsUrl = record.mapsUrl ? record.mapsUrl.trim() : null;
   const website = record.website ? record.website.trim() : "";
+  const rating = parseRating(record.rating);
+  const reviewCount = parseReviewCount(record.reviews);
+  const ownerName = record.ownerName ? record.ownerName.trim() || null : null;
+  const currentWebsite = website || null;
 
   return {
     businessName,
@@ -251,6 +305,10 @@ function willImportRecord(record: CsvRecord): ParsedProspect | null {
     category: record.category ? record.category.trim() : "Umum",
     hasWebsite: website !== "",
     mapsUrl: mapsUrl || null,
+    rating,
+    reviewCount,
+    ownerName,
+    currentWebsite,
   };
 }
 
@@ -268,9 +326,14 @@ async function insertProspects(candidates: ParsedProspect[]): Promise<{
 }> {
   const batchPhoneKeys = new Set<string>();
   const batchUrlKeys = new Set<string>();
+  const batchWebsiteKeys = new Set<string>();
 
   const existingRows = await db
-    .select({ phone: prospectsTable.phone, mapsUrl: prospectsTable.mapsUrl })
+    .select({
+      phone: prospectsTable.phone,
+      mapsUrl: prospectsTable.mapsUrl,
+      currentWebsite: prospectsTable.currentWebsite,
+    })
     .from(prospectsTable);
 
   const existingPhoneKeys = new Set(
@@ -278,6 +341,11 @@ async function insertProspects(candidates: ParsedProspect[]): Promise<{
   );
   const existingUrlKeys = new Set(
     existingRows.map((row) => row.mapsUrl?.trim().toLowerCase()).filter((url): url is string => !!url),
+  );
+  const existingWebsiteKeys = new Set(
+    existingRows
+      .map((row) => (row.currentWebsite ? normalizeWebsiteKey(row.currentWebsite) : null))
+      .filter((site): site is string => !!site),
   );
 
   const values: {
@@ -289,6 +357,10 @@ async function insertProspects(candidates: ParsedProspect[]): Promise<{
     hasWebsite: boolean;
     status: "belum_dihubungi";
     mapsUrl: string | null;
+    rating: string | null;
+    ownerName: string | null;
+    currentWebsite: string | null;
+    notes: string | null;
   }[] = [];
 
   let skippedInBatch = 0;
@@ -297,25 +369,32 @@ async function insertProspects(candidates: ParsedProspect[]): Promise<{
   for (const candidate of candidates) {
     const phoneKey = candidate.phone !== "" ? candidate.phone : null;
     const urlKey = candidate.mapsUrl ? candidate.mapsUrl.toLowerCase() : null;
+    const websiteKey = candidate.currentWebsite ? normalizeWebsiteKey(candidate.currentWebsite) : null;
 
     // Both keys empty → nothing to dedupe on, always import.
-    const dedupable = phoneKey !== null || urlKey !== null;
+    const dedupable = phoneKey !== null || urlKey !== null || websiteKey !== null;
 
     if (dedupable) {
       if (phoneKey !== null && (existingPhoneKeys.has(phoneKey) || batchPhoneKeys.has(phoneKey))) {
-        skippedInBatch += batchPhoneKeys.has(phoneKey) ? 1 : 0;
         skippedExisting += batchPhoneKeys.has(phoneKey) ? 0 : 1;
+        skippedInBatch += batchPhoneKeys.has(phoneKey) ? 1 : 0;
         continue;
       }
       if (urlKey !== null && (existingUrlKeys.has(urlKey) || batchUrlKeys.has(urlKey))) {
-        skippedInBatch += batchUrlKeys.has(urlKey) ? 1 : 0;
         skippedExisting += batchUrlKeys.has(urlKey) ? 0 : 1;
+        skippedInBatch += batchUrlKeys.has(urlKey) ? 1 : 0;
+        continue;
+      }
+      if (websiteKey !== null && (existingWebsiteKeys.has(websiteKey) || batchWebsiteKeys.has(websiteKey))) {
+        skippedExisting += batchWebsiteKeys.has(websiteKey) ? 0 : 1;
+        skippedInBatch += batchWebsiteKeys.has(websiteKey) ? 1 : 0;
         continue;
       }
     }
 
     if (phoneKey !== null) batchPhoneKeys.add(phoneKey);
     if (urlKey !== null) batchUrlKeys.add(urlKey);
+    if (websiteKey !== null) batchWebsiteKeys.add(websiteKey);
 
     values.push({
       businessName: candidate.businessName,
@@ -326,6 +405,10 @@ async function insertProspects(candidates: ParsedProspect[]): Promise<{
       hasWebsite: candidate.hasWebsite,
       status: "belum_dihubungi",
       mapsUrl: candidate.mapsUrl,
+      rating: candidate.rating,
+      ownerName: candidate.ownerName,
+      currentWebsite: candidate.currentWebsite,
+      notes: candidate.reviewCount ? `${candidate.reviewCount} ulasan` : null,
     });
   }
 
@@ -387,6 +470,10 @@ router.post("/prospecting/bulk-import", async (req, res) => {
       category: p.category || "Umum",
       hasWebsite: p.hasWebsite,
       mapsUrl: p.mapsUrl ?? null,
+      rating: parseRating(p.rating),
+      reviewCount: null,
+      ownerName: p.ownerName?.trim() || null,
+      currentWebsite: p.currentWebsite?.trim() || null,
     }));
 
     if (candidates.length > MAX_IMPORT_ROWS) {

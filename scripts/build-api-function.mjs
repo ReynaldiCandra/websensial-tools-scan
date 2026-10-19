@@ -21,16 +21,7 @@ async function run() {
     format: "esm",
     outfile: path.resolve(rootDir, "api/index.mjs"),
     logLevel: "info",
-    external: [
-      "*.node",
-      "sharp",
-      "better-sqlite3",
-      "sqlite3",
-      "pg-native",
-      "fsevents",
-      "bufferutil",
-      "utf-8-validate",
-    ],
+    external: ["*.node", "pg-native", "fsevents"],
     sourcemap: false,
     banner: {
       js: `import { createRequire as __bannerCrReq } from 'node:module';

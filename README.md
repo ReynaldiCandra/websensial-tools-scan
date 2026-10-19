@@ -87,8 +87,10 @@ npm test
   These run without a database.
 - **Bulk import** — creates a temporary database, imports prospects, verifies
   the pipeline row, and drops the database afterwards. Skipped automatically
-  when `DATABASE_URL` is not available; it needs permission to `CREATE DATABASE`
-  on the configured PostgreSQL server.
+  when no database is configured; it needs permission to `CREATE DATABASE` on
+  that server. Set `TEST_DATABASE_URL` to run it against a local/throwaway
+  Postgres instead of the app database. Connection drops from a hosted pooler
+  (some resolved IPs refuse connections) are retried automatically.
 
 ## Prospecting search
 

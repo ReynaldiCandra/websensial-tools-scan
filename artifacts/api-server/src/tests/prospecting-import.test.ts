@@ -5,7 +5,9 @@ import { Pool } from "pg";
 import request from "supertest";
 
 const API_KEY = "test-api-key";
-const baseUrl = process.env.DATABASE_URL;
+// `TEST_DATABASE_URL` lets you point the suite at a local/throwaway server; it
+// falls back to the configured DATABASE_URL so `npm test` keeps working.
+const baseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
 const dbName = `test_prospecting_${Date.now()}_${Math.random()
   .toString(36)
   .slice(2, 8)}`;
@@ -13,6 +15,42 @@ const dbName = `test_prospecting_${Date.now()}_${Math.random()
 // Skip instead of failing when the test runner has no database configured.
 // Run `npm test` normally (it loads ../../.env.local) to execute this suite.
 const describeWithDb = baseUrl ? describe : describe.skip;
+
+const RETRYABLE_CODES = new Set(["ECONNREFUSED", "ETIMEDOUT", "ECONNRESET", "ENOTFOUND"]);
+
+function errorCode(err: unknown): string | undefined {
+  const direct = (err as { code?: string })?.code;
+  if (direct) return direct;
+  return (err as { errors?: { code?: string }[] })?.errors?.[0]?.code;
+}
+
+/**
+ * Hosted Postgres poolers resolve to several addresses and some of them may
+ * refuse connections during a rollout. A single dropped attempt must not fail
+ * the suite, so connection errors are retried with backoff.
+ */
+async function withConnectionRetry<T>(
+  label: string,
+  fn: () => Promise<T>,
+  attempts = 6,
+): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      if (!RETRYABLE_CODES.has(errorCode(err) ?? "")) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 300 * attempt));
+    }
+  }
+
+  throw new Error(
+    `Database uji tidak bisa dihubungi (${label}) setelah ${attempts} percobaan: ` +
+      `${errorCode(lastError) ?? (lastError as Error)?.message ?? "unknown error"}`,
+  );
+}
 
 let app!: Express;
 let admin: Pool | undefined;
@@ -26,7 +64,10 @@ describeWithDb("POST /api/prospecting/bulk-import", () => {
 
     // Use a throwaway database so the test never touches real prospects.
     admin = new Pool({ connectionString: baseUrl });
-    await admin.query(`CREATE DATABASE "${dbName}"`);
+    await withConnectionRetry("admin", () => admin!.query("select 1"));
+    await withConnectionRetry("create database", () =>
+      admin!.query(`CREATE DATABASE "${dbName}"`),
+    );
 
     const testUrl = new URL(baseUrl!);
     testUrl.pathname = `/${dbName}`;
@@ -35,7 +76,8 @@ describeWithDb("POST /api/prospecting/bulk-import", () => {
     const dbModule = await import("@workspace/db");
     const pool = dbModule.pool;
     appPool = pool;
-    await pool.query(`
+    await withConnectionRetry("test database", () => pool.query("select 1"));
+    await withConnectionRetry("create table", () => pool.query(`
       CREATE TABLE prospects (
         id serial PRIMARY KEY,
         business_name text NOT NULL,
@@ -54,7 +96,7 @@ describeWithDb("POST /api/prospecting/bulk-import", () => {
         created_at timestamp DEFAULT now() NOT NULL,
         updated_at timestamp DEFAULT now() NOT NULL
       )
-    `);
+    `));
 
     ({ default: app } = await import("../app"));
   });

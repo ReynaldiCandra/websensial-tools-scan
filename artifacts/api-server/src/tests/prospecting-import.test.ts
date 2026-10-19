@@ -143,6 +143,31 @@ describeWithDb("POST /api/prospecting/bulk-import", () => {
     assert.equal(list.body[0].hasWebsite, false);
   });
 
+  it("returns the existing prospect id when the lead is already saved", async () => {
+    const phone = `0812${Date.now().toString().slice(-7)}`;
+    const payload = {
+      prospects: [{ businessName: `Dup Check ${phone}`, phone, category: "Laundry" }],
+    };
+
+    const first = await request(app)
+      .post("/api/prospecting/bulk-import")
+      .set("x-api-key", API_KEY)
+      .send(payload);
+
+    assert.equal(first.status, 201);
+    assert.equal(first.body.imported, 1);
+    const firstId = first.body.ids[0];
+
+    const second = await request(app)
+      .post("/api/prospecting/bulk-import")
+      .set("x-api-key", API_KEY)
+      .send(payload);
+
+    assert.equal(second.status, 201);
+    assert.equal(second.body.imported, 0);
+    assert.deepEqual(second.body.matchedIds, [firstId]);
+  });
+
   it("returns 400 for an invalid payload", async () => {
     const res = await request(app)
       .post("/api/prospecting/bulk-import")

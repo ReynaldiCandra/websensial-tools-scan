@@ -8,6 +8,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
 import router from "./routes";
+import { publicPreviewsRouter } from "./routes/previews";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
@@ -81,6 +82,13 @@ app.use(express.urlencoded({ extended: true }));
 // Raw CSV bodies (Content-Type: text/csv) arrive as strings for bulk import.
 app.use(express.text({ type: "text/csv", limit: "5mb" }));
 
+/**
+ * Public prospect demo links are shared as `/preview/<token>` (no `/api`
+ * prefix) — the Vercel rewrite for `/preview/*` lands in this function, so the
+ * root path has to be served here as well. Without this mount the share link
+ * returns the JSON 404 "Route not found" instead of the generated website.
+ */
+app.use(publicPreviewsRouter);
 app.use("/api", router);
 
 // Never let Express fall back to its HTML error page: the frontend always

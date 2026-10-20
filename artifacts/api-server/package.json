@@ -7,7 +7,7 @@
     "dev": "node ./build.mjs && node --enable-source-maps --env-file-if-exists=../../.env.local --env-file-if-exists=../../.env ./dist/index.mjs",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps --env-file-if-exists=../../.env.local --env-file-if-exists=../../.env ./dist/index.mjs",
-    "test": "node --env-file-if-exists=../../.env.local --import tsx --test src/tests/auth.test.ts src/tests/security.test.ts src/tests/phone.test.ts src/tests/prospecting-search.test.ts src/tests/prospecting-import.test.ts",
+    "test": "node --env-file-if-exists=../../.env.local --import tsx --test src/tests/auth.test.ts src/tests/security.test.ts src/tests/previews.test.ts src/tests/phone.test.ts src/tests/prospecting-search.test.ts src/tests/prospecting-import.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

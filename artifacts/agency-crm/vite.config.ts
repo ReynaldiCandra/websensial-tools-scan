@@ -21,6 +21,11 @@ const apiProxy = {
     target: apiProxyTarget,
     changeOrigin: true,
   },
+  // Public prospect demo link, same path Vercel rewrites to the API function.
+  "/preview": {
+    target: apiProxyTarget,
+    changeOrigin: true,
+  },
 };
 
 export default defineConfig({

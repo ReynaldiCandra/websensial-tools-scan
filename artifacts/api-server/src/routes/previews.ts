@@ -6,6 +6,8 @@ import { z } from "zod";
 import { toWaNumber } from "../lib/phone";
 
 const router = Router();
+/** Public prospect demo link. Must be answerable without auth. */
+export const publicPreviewsRouter = Router();
 
 /**
  * Preview pages are plain HTML built with template strings, and their content
@@ -424,7 +426,7 @@ router.get("/previews/prospect/:id", async (req, res) => {
 });
 
 // GET /preview/:token — serve the HTML page (public)
-router.get("/preview/:token", async (req, res) => {
+publicPreviewsRouter.get("/preview/:token", async (req, res) => {
   try {
     const [row] = await db
       .select()

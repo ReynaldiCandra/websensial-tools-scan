@@ -109,7 +109,8 @@ const COLOR_OPTIONS = [
 ];
 
 function colorsForCategory(pageCategory: string) {
-  const values = PALETTE_GROUPS[pageCategory] ?? ["indigo", "emerald", "amber", "rose", "violet", "slate"];
+  const recommended = PALETTE_GROUPS[pageCategory] ?? [];
+  const values = [...recommended, ...COLOR_OPTIONS.map((option) => option.value).filter((value) => !recommended.includes(value))];
   return values.map((value) => COLOR_OPTIONS.find((option) => option.value === value)!).filter(Boolean);
 }
 
@@ -300,24 +301,42 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">Warna tema</Label>
-            <div className="flex gap-2 flex-wrap">
-              {colorsForCategory(pageCategory).map((c) => (
-                <button
-                  key={c.value}
-                  onClick={() => setColorScheme(c.value)}
-                  type="button"
-                  aria-pressed={colorScheme === c.value}
-                  className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full border transition-all ${
-                    colorScheme === c.value
-                      ? "border-foreground shadow-sm font-semibold"
-                      : "border-border hover:border-muted-foreground"
-                  }`}
-                >
-                  <span className={`h-4 w-4 rounded-full border ${c.value === "white" || c.value === "ivory" ? "border-black/20" : "border-transparent"}`} style={{ background: c.color }} />
-                  {c.label}
-                </button>
-              ))}
-            </div>
+            {(() => {
+              const colors = colorsForCategory(pageCategory);
+              const recommendedCount = PALETTE_GROUPS[pageCategory]?.length ?? 0;
+              const renderColors = (options: typeof COLOR_OPTIONS) => (
+                <div className="flex gap-2 flex-wrap">
+                  {options.map((c) => (
+                    <button
+                      key={c.value}
+                      onClick={() => setColorScheme(c.value)}
+                      type="button"
+                      aria-pressed={colorScheme === c.value}
+                      className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full border transition-all ${
+                        colorScheme === c.value
+                          ? "border-foreground shadow-sm font-semibold"
+                          : "border-border hover:border-muted-foreground"
+                      }`}
+                    >
+                      <span className={`h-4 w-4 rounded-full border ${c.value === "white" || c.value === "ivory" ? "border-black/20" : "border-transparent"}`} style={{ background: c.color }} />
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              );
+              return (
+                <div className="space-y-2">
+                  {recommendedCount > 0 && (
+                    <>
+                      <p className="text-[11px] text-muted-foreground">Rekomendasi {pageCategory}</p>
+                      {renderColors(colors.slice(0, recommendedCount))}
+                      <p className="pt-1 text-[11px] text-muted-foreground">Warna lainnya</p>
+                    </>
+                  )}
+                  {renderColors(colors.slice(recommendedCount))}
+                </div>
+              );
+            })()}
           </div>
           <Button onClick={generate} disabled={generating} className="w-full gap-2" size="sm">
             {generating

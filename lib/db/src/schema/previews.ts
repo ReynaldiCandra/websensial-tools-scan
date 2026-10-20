@@ -12,6 +12,8 @@ export const previewsTable = pgTable("previews", {
   address: text("address"),
   tagline: text("tagline"),
   colorScheme: text("color_scheme").notNull().default("indigo"),
+  pageCategory: text("page_category").notNull().default("Umum"),
+  templateStyle: text("template_style").notNull().default("classic"),
   services: text("services"),
   aboutText: text("about_text"),
   isActive: boolean("is_active").notNull().default(true),

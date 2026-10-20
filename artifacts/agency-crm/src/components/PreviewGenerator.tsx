@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ExternalLink, Loader2, Wand2, Copy, CheckCheck, RefreshCw, Eye } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ExternalLink, Loader2, Wand2, Copy, CheckCheck, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,9 +27,44 @@ interface PreviewRecord {
   token: string;
   previewUrl: string;
   colorScheme: string;
+  templateStyle?: string;
   viewCount: number;
   createdAt: string;
 }
+
+const CATEGORY_OPTIONS = [
+  "Company Profile",
+  "Fashion",
+  "Kuliner",
+  "Salon & Kecantikan",
+  "Otomotif",
+  "Kesehatan",
+  "Apotek",
+  "Fotografi",
+  "Laundry",
+  "Catering",
+  "Hotel & Penginapan",
+  "Pendidikan",
+  "Toko Elektronik",
+  "Toko Material",
+  "Percetakan",
+  "Furniture",
+  "Jasa Umum",
+  "Gym & Kebugaran",
+  "Pet Shop & Hewan",
+  "Servis Elektronik",
+];
+
+const TEMPLATE_OPTIONS = [
+  { value: "fashion-catalog", label: "Fashion Catalog", description: "Kartu produk, diskon, harga, dan tombol WhatsApp" },
+  { value: "company-modern", label: "Company Profile Modern", description: "Hero premium dengan tampilan bisnis modern" },
+  { value: "company-elegant", label: "Company Profile Elegant", description: "Tipografi editorial dengan nuansa elegan" },
+  { value: "company-minimal", label: "Company Profile Minimal", description: "Layout minimalis, bersih, dan fokus pada layanan" },
+  { value: "classic", label: "Landing Page Classic", description: "Landing page sederhana untuk semua kategori" },
+];
+
+const defaultTemplateFor = (pageCategory: string) =>
+  pageCategory === "Fashion" ? "fashion-catalog" : "company-modern";
 
 const COLOR_OPTIONS = [
   { value: "indigo", label: "Indigo", color: "#4f46e5" },
@@ -46,23 +81,31 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
   const [services, setServices] = useState("");
   const [aboutText, setAboutText] = useState("");
   const [colorScheme, setColorScheme] = useState("indigo");
+  const [pageCategory, setPageCategory] = useState(
+    CATEGORY_OPTIONS.includes(category) ? category : "Company Profile",
+  );
+  const [templateStyle, setTemplateStyle] = useState(() => defaultTemplateFor(category));
   const [generating, setGenerating] = useState(false);
   const [previews, setPreviews] = useState<PreviewRecord[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
 
-  const loadPreviews = async () => {
-    const res = await apiFetch(`/api/previews/prospect/${prospectId}`);
-    if (res.ok) {
-      const data = await res.json();
-      setPreviews(data);
-      setLoaded(true);
-    }
-  };
-
-  if (!loaded) {
-    loadPreviews();
-  }
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch(`/api/previews/prospect/${prospectId}`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error("Gagal memuat preview sebelumnya");
+        const data = (await res.json()) as PreviewRecord[];
+        if (!cancelled) setPreviews(data);
+      })
+      .catch(() => {
+        if (!cancelled) setPreviews([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
+      });
+    return () => { cancelled = true; };
+  }, [prospectId]);
 
   const generate = async () => {
     setGenerating(true);
@@ -76,6 +119,8 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
           colorScheme,
           services: services || undefined,
           aboutText: aboutText || undefined,
+          pageCategory,
+          templateStyle,
         }),
       });
       const data = await res.json();
@@ -132,6 +177,46 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Kategori website</Label>
+              <Select
+                value={pageCategory}
+                onValueChange={(value) => {
+                  setPageCategory(value);
+                  setTemplateStyle(defaultTemplateFor(value));
+                }}
+              >
+                <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CATEGORY_OPTIONS.map((option) => (
+                    <SelectItem key={option} value={option}>{option}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Style UI/UX</Label>
+              <Select value={templateStyle} onValueChange={setTemplateStyle}>
+                <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {TEMPLATE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      <span className="flex flex-col text-left">
+                        <span>{option.label}</span>
+                        <span className="text-xs text-muted-foreground">{option.description}</span>
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {templateStyle === "fashion-catalog"
+              ? "Katalog memakai kartu produk contoh (bukan katalog atau harga asli)."
+              : "Pilih gaya company profile yang paling cocok untuk presentasi ke client."}
+          </p>
           <div className="space-y-1.5">
             <Label className="text-xs">Tagline (opsional)</Label>
             <Input
@@ -194,14 +279,17 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
           </p>
           {previews.map((p) => (
             <div key={p.id} className="rounded-lg border bg-card p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <span
                     className="w-3 h-3 rounded-full"
                     style={{
                       background: COLOR_OPTIONS.find((c) => c.value === p.colorScheme)?.color ?? "#4f46e5",
                     }}
                   />
+                  <Badge variant="secondary" className="text-[10px]">
+                    {TEMPLATE_OPTIONS.find((option) => option.value === p.templateStyle)?.label ?? p.templateStyle ?? "Classic"}
+                  </Badge>
                   <code className="text-xs text-muted-foreground font-mono">/preview/{p.token.slice(0, 8)}…</code>
                   <Badge variant="outline" className="text-xs gap-1">
                     <Eye className="h-2.5 w-2.5" />{p.viewCount} views

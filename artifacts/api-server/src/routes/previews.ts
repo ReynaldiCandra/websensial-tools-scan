@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { z } from "zod";
 import { toWaNumber } from "../lib/phone";
+import { renderFashionCatalogHTML, renderPremiumProfileHTML, type PreviewPageData, type PreviewTemplateStyle } from "../lib/preview-html";
 
 const router = Router();
 /** Public prospect demo link. Must be answerable without auth. */
@@ -29,13 +30,23 @@ export function escapeHtml(value: string): string {
       default:
         return "&#39;";
     }
-  });
+  }).replace(/[\u0000-\u001f\u007f-\u009f]/g, " ");
 }
+
+const TEMPLATE_STYLES = [
+  "classic",
+  "fashion-catalog",
+  "company-modern",
+  "company-elegant",
+  "company-minimal",
+] as const satisfies readonly PreviewTemplateStyle[];
 
 const CreatePreviewBody = z.object({
   prospectId: z.number(),
   tagline: z.string().optional(),
   colorScheme: z.string().optional().default("indigo"),
+  pageCategory: z.string().trim().min(1).max(80).optional(),
+  templateStyle: z.enum(TEMPLATE_STYLES).optional(),
   services: z.string().optional(),
   aboutText: z.string().optional(),
 });
@@ -103,18 +114,23 @@ function getDefaultAbout(businessName: string, category: string): string {
 }
 
 
-function generatePreviewHTML(data: {
-  businessName: string;
-  ownerName?: string | null;
-  category: string;
-  phone: string;
-  address?: string | null;
-  tagline: string;
-  services: string[];
-  aboutText: string;
-  colorScheme: string;
-  token: string;
-}): string {
+export function generatePreviewHTML(
+  data: PreviewPageData & { templateStyle?: PreviewTemplateStyle },
+): string {
+  if (data.templateStyle === "fashion-catalog") {
+    return renderFashionCatalogHTML(data);
+  }
+  if (
+    data.templateStyle === "company-modern" ||
+    data.templateStyle === "company-elegant" ||
+    data.templateStyle === "company-minimal"
+  ) {
+    return renderPremiumProfileHTML(data, data.templateStyle);
+  }
+  return generateClassicPreviewHTML(data);
+}
+
+function generateClassicPreviewHTML(data: PreviewPageData): string {
   const c = COLOR_SCHEMES[data.colorScheme] ?? COLOR_SCHEMES["indigo"];
   const icon = CATEGORY_ICONS[data.category] ?? "🏪";
   const waPhone = toWaNumber(data.phone);
@@ -366,10 +382,12 @@ router.post("/previews", async (req, res) => {
 
     const token = randomBytes(12).toString("hex");
 
-    const finalTagline = tagline || getDefaultTagline(prospect.category, prospect.businessName);
-    const finalServices = services || getDefaultServices(prospect.category);
-    const finalAbout = aboutText || getDefaultAbout(prospect.businessName, prospect.category);
+    const pageCategory = parsed.data.pageCategory ?? prospect.category;
+    const finalTagline = tagline || getDefaultTagline(pageCategory, prospect.businessName);
+    const finalServices = services || getDefaultServices(pageCategory);
+    const finalAbout = aboutText || getDefaultAbout(prospect.businessName, pageCategory);
     const finalColor = colorScheme || "indigo";
+    const templateStyle = parsed.data.templateStyle ?? (pageCategory === "Fashion" ? "fashion-catalog" : "company-modern");
 
     const [row] = await db
       .insert(previewsTable)
@@ -383,6 +401,8 @@ router.post("/previews", async (req, res) => {
         address: prospect.address,
         tagline: finalTagline,
         colorScheme: finalColor,
+        pageCategory,
+        templateStyle,
         services: finalServices,
         aboutText: finalAbout,
       })
@@ -392,6 +412,10 @@ router.post("/previews", async (req, res) => {
       id: row.id,
       token: row.token,
       previewUrl: `/preview/${row.token}`,
+      pageCategory: row.pageCategory,
+      templateStyle: row.templateStyle,
+      colorScheme: row.colorScheme,
+      viewCount: row.viewCount,
       createdAt: row.createdAt.toISOString(),
     });
   } catch (err) {
@@ -414,6 +438,8 @@ router.get("/previews/prospect/:id", async (req, res) => {
         token: r.token,
         previewUrl: `/preview/${r.token}`,
         colorScheme: r.colorScheme,
+        pageCategory: r.pageCategory,
+        templateStyle: r.templateStyle,
         isActive: r.isActive,
         viewCount: r.viewCount,
         createdAt: r.createdAt.toISOString(),
@@ -451,14 +477,14 @@ publicPreviewsRouter.get("/preview/:token", async (req, res) => {
     const html = generatePreviewHTML({
       businessName: row.businessName,
       ownerName: row.ownerName,
-      category: row.category,
+      category: row.pageCategory,
       phone: row.phone,
       address: row.address,
-      tagline: row.tagline ?? getDefaultTagline(row.category, row.businessName),
+      tagline: row.tagline ?? getDefaultTagline(row.pageCategory, row.businessName),
       services,
-      aboutText: row.aboutText ?? getDefaultAbout(row.businessName, row.category),
+      aboutText: row.aboutText ?? getDefaultAbout(row.businessName, row.pageCategory),
       colorScheme: row.colorScheme,
-      token: row.token,
+      templateStyle: row.templateStyle as PreviewTemplateStyle,
     });
 
     res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -467,7 +493,9 @@ publicPreviewsRouter.get("/preview/:token", async (req, res) => {
     // cannot execute JavaScript here.
     res.setHeader(
       "Content-Security-Policy",
-      "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      row.templateStyle === "fashion-catalog"
+        ? "default-src 'none'; style-src 'unsafe-inline'; img-src https://images.unsplash.com data:; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+        : "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
     );
     return res.send(html);
   } catch (err) {

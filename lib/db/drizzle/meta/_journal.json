@@ -15,6 +15,13 @@
       "when": 1783785187330,
       "tag": "0001_funny_edwin_jarvis",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792463284816,
+      "tag": "0002_great_obadiah_stane",
+      "breakpoints": true
     }
   ]
 }

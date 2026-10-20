@@ -37,16 +37,43 @@ describeWithDb("public preview link", () => {
       .returning();
     prospectId = prospect.id;
 
-    await db.insert(previewsTable).values({
-      token,
-      prospectId: prospect.id,
-      businessName,
-      category: "Kuliner",
-      phone: "081234567890",
-      tagline: "Tagline uji",
-      services: "Layanan A,Layanan B",
-      aboutText: "Tentang uji",
-    });
+    await db.insert(previewsTable).values([
+      {
+        token,
+        prospectId: prospect.id,
+        businessName,
+        category: "Kuliner",
+        phone: "081234567890",
+        tagline: "Tagline uji",
+        services: "Layanan A,Layanan B",
+        aboutText: "Tentang uji",
+      },
+      {
+        token: randomBytes(12).toString("hex"),
+        prospectId: prospect.id,
+        businessName,
+        category: "Fashion",
+        phone: "081234567890",
+        tagline: "Gaya pilihan untuk setiap hari",
+        colorScheme: "rose",
+        pageCategory: "Fashion",
+        templateStyle: "fashion-catalog",
+        services: "Koleksi demo",
+        aboutText: "Produk dan harga contoh untuk presentasi.",
+      },
+      {
+        token: randomBytes(12).toString("hex"),
+        prospectId: prospect.id,
+        businessName,
+        category: "Kuliner",
+        pageCategory: "Company Profile",
+        phone: "081234567890",
+        tagline: "Membangun kualitas masa depan",
+        templateStyle: "company-elegant",
+        services: "Konsultasi,Solusi Terintegrasi",
+        aboutText: "Company profile premium untuk uji tampilan.",
+      },
+    ]);
   });
 
   after(async () => {
@@ -69,6 +96,67 @@ describeWithDb("public preview link", () => {
 
     const [row] = await db.select().from(previewsTable).where(eq(previewsTable.token, token));
     assert.equal(row.viewCount, 1);
+  });
+
+  it("creates a preview using the selected category and UI style", async () => {
+    const created = await request(app)
+      .post("/api/previews")
+      .set("x-api-key", API_KEY)
+      .send({
+        prospectId,
+        pageCategory: "Fashion",
+        templateStyle: "fashion-catalog",
+        colorScheme: "rose",
+      });
+
+    assert.equal(created.status, 201);
+    assert.equal(created.body.pageCategory, "Fashion");
+    assert.equal(created.body.templateStyle, "fashion-catalog");
+    assert.equal(created.body.colorScheme, "rose");
+
+    const preview = await request(app).get(created.body.previewUrl);
+    assert.match(preview.text, /Koleksi Terbaik untuk Penampilan Anda/);
+    assert.equal(preview.status, 200);
+    assert.match(preview.text, /product-grid/);
+  });
+
+  it("rejects unknown UI styles instead of silently accepting them", async () => {
+    const res = await request(app)
+      .post("/api/previews")
+      .set("x-api-key", API_KEY)
+      .send({ prospectId, templateStyle: "untrusted-style" });
+
+    assert.equal(res.status, 400);
+  });
+
+  it("renders the fashion catalog as standalone product cards with demo prices", async () => {
+    const rows = await db.select().from(previewsTable).where(eq(previewsTable.prospectId, prospectId!));
+    const fashion = rows.find((row) => row.templateStyle === "fashion-catalog");
+    assert.ok(fashion);
+
+    const res = await request(app).get(`/preview/${fashion.token}`);
+
+    assert.equal(res.status, 200);
+    assert.match(res.text, /product-grid/);
+    assert.match(res.text, /Blazer Linen Classic/);
+    assert.match(res.text, /Produk dan harga pada halaman ini adalah contoh demo/);
+    assert.match(res.text, /images\.unsplash\.com/);
+    assert.match(String(res.headers["content-security-policy"]), /script-src 'unsafe-inline'/);
+    assert.doesNotMatch(res.text, /react|vite|stylesheet href/i);
+  });
+
+  it("renders company profile styles as standalone premium HTML", async () => {
+    const rows = await db.select().from(previewsTable).where(eq(previewsTable.prospectId, prospectId!));
+    const elegant = rows.find((row) => row.templateStyle === "company-elegant");
+    assert.ok(elegant);
+
+    const res = await request(app).get(`/preview/${elegant.token}`);
+
+    assert.equal(res.status, 200);
+    assert.match(res.text, /WEBSENSIAL WEBSITE CONCEPT/);
+    assert.match(res.text, /Mengutamakan kualitas di setiap detail/);
+    assert.match(String(res.headers["content-security-policy"]), /default-src 'none'/);
+    assert.doesNotMatch(res.text, /<script|react|vite/i);
   });
 
   it("also answers /api/preview/:token", async () => {

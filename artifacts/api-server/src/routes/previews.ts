@@ -39,6 +39,11 @@ const TEMPLATE_STYLES = [
   "company-modern",
   "company-elegant",
   "company-minimal",
+  "corporate-finance",
+  "technology-saas",
+  "creative-agency",
+  "wellness-health",
+  "conversion-landing",
 ] as const satisfies readonly PreviewTemplateStyle[];
 
 const CreatePreviewBody = z.object({
@@ -58,6 +63,19 @@ const COLOR_SCHEMES: Record<string, { primary: string; bg: string; accent: strin
   rose: { primary: "#e11d48", bg: "#fff1f2", accent: "#f43f5e", text: "#881337", light: "#ffe4e6" },
   slate: { primary: "#475569", bg: "#f8fafc", accent: "#64748b", text: "#0f172a", light: "#e2e8f0" },
   violet: { primary: "#7c3aed", bg: "#f5f3ff", accent: "#8b5cf6", text: "#2e1065", light: "#ede9fe" },
+  ivory: { primary: "#8a6e50", bg: "#faf7f0", accent: "#c0a77d", text: "#30271f", light: "#f1ebdf" },
+  beige: { primary: "#987856", bg: "#f4eee5", accent: "#c2a887", text: "#392f25", light: "#e9ddcc" },
+  taupe: { primary: "#7c6657", bg: "#f2eeea", accent: "#aa9382", text: "#302721", light: "#e5ddd5" },
+  brown: { primary: "#795548", bg: "#f5eee9", accent: "#a9826b", text: "#34241d", light: "#ead9cb" },
+  black: { primary: "#c6a76d", bg: "#171717", accent: "#e1c68f", text: "#f8f5ef", light: "#282522" },
+  white: { primary: "#24466b", bg: "#ffffff", accent: "#7192b3", text: "#1f2937", light: "#f1f5f9" },
+  navy: { primary: "#284c77", bg: "#f2f6fb", accent: "#6f91b8", text: "#162a43", light: "#dfe9f4" },
+  charcoal: { primary: "#d0b477", bg: "#262a2f", accent: "#e5c879", text: "#f6f4ef", light: "#343a40" },
+  "dark-slate": { primary: "#8ab4d6", bg: "#1e293b", accent: "#a6c9e6", text: "#f1f5f9", light: "#334155" },
+  "soft-blue": { primary: "#477ba8", bg: "#f2f7fb", accent: "#7eadd0", text: "#203448", light: "#e0edf6" },
+  "neon-accent": { primary: "#c6f36b", bg: "#17191d", accent: "#d6ff7f", text: "#f7f8f4", light: "#282c2d" },
+  "sage-green": { primary: "#607b65", bg: "#f2f5f0", accent: "#91a58b", text: "#26352a", light: "#e3eae0" },
+  "soft-rose": { primary: "#ad6878", bg: "#fbf3f4", accent: "#d9aab0", text: "#38272b", light: "#f2e2e5" },
 };
 
 const CATEGORY_ICONS: Record<string, string> = {
@@ -76,6 +94,14 @@ const CATEGORY_ICONS: Record<string, string> = {
   "Toko Material": "🏗️",
   "Percetakan": "🖨️",
   "Furniture": "🪑",
+};
+
+const TEMPLATE_LABELS: Record<string, string> = {
+  "corporate-finance": "CORPORATE · TRUSTED ADVISORY",
+  "technology-saas": "TECHNOLOGY · BUILT FOR WHAT'S NEXT",
+  "creative-agency": "INDEPENDENT CREATIVE STUDIO",
+  "wellness-health": "WELLNESS · CARE IN EVERY DETAIL",
+  "conversion-landing": "SOLUSI UNTUK KEBUTUHAN ANDA",
 };
 
 function getDefaultTagline(category: string, businessName: string): string {
@@ -123,7 +149,12 @@ export function generatePreviewHTML(
   if (
     data.templateStyle === "company-modern" ||
     data.templateStyle === "company-elegant" ||
-    data.templateStyle === "company-minimal"
+    data.templateStyle === "company-minimal" ||
+    data.templateStyle === "corporate-finance" ||
+    data.templateStyle === "technology-saas" ||
+    data.templateStyle === "creative-agency" ||
+    data.templateStyle === "wellness-health" ||
+    data.templateStyle === "conversion-landing"
   ) {
     return renderPremiumProfileHTML(data, data.templateStyle);
   }
@@ -387,7 +418,23 @@ router.post("/previews", async (req, res) => {
     const finalServices = services || getDefaultServices(pageCategory);
     const finalAbout = aboutText || getDefaultAbout(prospect.businessName, pageCategory);
     const finalColor = colorScheme || "indigo";
-    const templateStyle = parsed.data.templateStyle ?? (pageCategory === "Fashion" ? "fashion-catalog" : "company-modern");
+    const templateStyle = parsed.data.templateStyle ?? (
+      pageCategory === "Fashion" || pageCategory === "Fashion & Luxury"
+        ? "fashion-catalog"
+        : pageCategory === "Company Profile"
+        ? "company-modern"
+        : pageCategory === "Corporate, Hukum, & Keuangan"
+          ? "corporate-finance"
+          : pageCategory === "Teknologi & SaaS"
+            ? "technology-saas"
+            : pageCategory === "Portofolio Kreatif & Agensi"
+              ? "creative-agency"
+              : pageCategory === "Wellness, Skincare, & Kesehatan"
+                ? "wellness-health"
+                : pageCategory.startsWith("Landing Page High Konversi")
+                  ? "conversion-landing"
+                  : "company-modern"
+    );
 
     const [row] = await db
       .insert(previewsTable)

@@ -15,7 +15,10 @@ import {
   Bell,
   BookOpen,
   LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,16 +63,20 @@ function NavGroup({
   title,
   items,
   location,
+  collapsed = false,
 }: {
   title: string;
   items: typeof navItems;
   location: string;
+  collapsed?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-        {title}
-      </span>
+      {!collapsed && (
+        <span className="px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+          {title}
+        </span>
+      )}
       <nav className="flex flex-col gap-1">
         {items.map((item) => {
           const isActive = location === item.href;
@@ -77,14 +84,15 @@ function NavGroup({
           return (
             <Link key={item.href} href={item.href}>
               <div
-                className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 cursor-pointer ${
+                title={collapsed ? item.label : undefined}
+                className={`group relative flex items-center ${collapsed ? "justify-center px-2" : "gap-3 px-3"} rounded-lg py-2 text-sm font-medium transition-all duration-200 cursor-pointer ${
                   isActive
                     ? "bg-primary text-primary-foreground shadow-sm shadow-primary/30"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground hover:translate-x-0.5"
                 }`}
               >
                 <Icon className={`h-4 w-4 transition-transform duration-200 ${!isActive && "group-hover:scale-110"}`} />
-                {item.label}
+                {!collapsed && <span>{item.label}</span>}
               </div>
             </Link>
           );
@@ -104,6 +112,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { data: settings } = useGetSettings();
   const agencyName = settings?.agencyName || "Websensial";
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem("websensial:sidebar-collapsed") === "true"; }
+    catch { return false; }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem("websensial:sidebar-collapsed", String(sidebarCollapsed)); }
+    catch { /* Persisting a UI preference is optional. */ }
+  }, [sidebarCollapsed]);
 
   const handleLogout = async () => {
     try {
@@ -114,33 +131,48 @@ export function Layout({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const SidebarContent = () => (
-    <div className="flex h-full flex-col gap-6 py-4">
-      <div className="flex items-center justify-between px-4 py-3">
-        <img
-          src="/websensial-logo.png"
-          alt="Websensial"
-          className="h-9 w-auto object-contain"
-        />
+  const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => (
+    <div className="flex h-full min-h-0 flex-col gap-5 py-4">
+      <div className={`flex items-center ${sidebarCollapsed && !mobile ? "justify-center px-2" : "justify-between px-4"} py-2`}>
+        {(!sidebarCollapsed || mobile) && (
+          <img
+            src="/websensial-logo.png"
+            alt="Websensial"
+            className={`${mobile ? "h-16 w-16" : "h-20 w-20"} shrink-0 rounded-xl object-contain`}
+          />
+        )}
+        {!mobile && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => setSidebarCollapsed((collapsed) => !collapsed)}
+            className="h-9 w-9 shrink-0"
+            aria-label={sidebarCollapsed ? "Perluas sidebar" : "Ciutkan sidebar"}
+            title={sidebarCollapsed ? "Perluas sidebar" : "Ciutkan sidebar"}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+          </Button>
+        )}
       </div>
-      <div className="flex-1 flex flex-col gap-6 px-3">
-        <NavGroup title="Menu Utama" items={mainNavItems} location={location} />
-        <NavGroup title="Preferensi" items={preferenceNavItems} location={location} />
+      <div className={`flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto ${sidebarCollapsed && !mobile ? "px-2" : "px-3"}`}>
+        <NavGroup title="Menu Utama" items={mainNavItems} location={location} collapsed={sidebarCollapsed && !mobile} />
+        <NavGroup title="Preferensi" items={preferenceNavItems} location={location} collapsed={sidebarCollapsed && !mobile} />
       </div>
-      <div className="flex items-center justify-between border-t border-border px-4 pt-3">
-        <span className="text-xs text-muted-foreground">Tema</span>
+      <div className={`flex items-center border-t border-border px-4 pt-3 ${sidebarCollapsed && !mobile ? "justify-center" : "justify-between"}`}>
+        {(!sidebarCollapsed || mobile) && <span className="text-xs text-muted-foreground">Tema</span>}
         <ThemeToggle />
       </div>
     </div>
   );
 
   return (
-    <div className="flex min-h-[100dvh] w-full bg-background">
-      <aside className="hidden w-64 flex-col border-r border-border bg-card/60 backdrop-blur-sm md:flex">
+    <div className="flex h-[100dvh] min-h-0 w-full overflow-hidden bg-background">
+      <aside className={`sticky top-0 hidden h-[100dvh] shrink-0 flex-col border-r border-border bg-card/60 backdrop-blur-sm transition-[width] duration-200 md:flex ${sidebarCollapsed ? "w-[4.5rem]" : "w-64"}`}>
         <SidebarContent />
       </aside>
 
-      <main className="flex flex-1 flex-col overflow-hidden">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex h-16 items-center justify-between gap-4 border-b border-border bg-card/60 backdrop-blur-sm px-4 md:px-6">
           <div className="flex items-center gap-3 min-w-0">
             <Sheet>
@@ -151,10 +183,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </Button>
               </SheetTrigger>
               <SheetContent side="left" className="w-64 p-0">
-                <SidebarContent />
+                <SidebarContent mobile />
               </SheetContent>
             </Sheet>
-            <img src="/websensial-logo.png" alt="Websensial" className="h-7 w-auto object-contain md:hidden" />
+            <img src="/websensial-logo.png" alt="Websensial" className="h-12 w-12 rounded-lg object-contain md:hidden" />
             <div className="hidden md:flex flex-col min-w-0">
               <span className="text-sm font-semibold truncate">Selamat datang, {agencyName} 👋</span>
               <span className="text-xs text-muted-foreground">Ringkasan aktivitas Crm hari ini.</span>
@@ -192,7 +224,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <div className="flex-1 overflow-auto p-4 md:p-6 lg:p-8">
+        <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6 lg:p-8">
           <div className="mx-auto max-w-6xl">
             {children}
           </div>

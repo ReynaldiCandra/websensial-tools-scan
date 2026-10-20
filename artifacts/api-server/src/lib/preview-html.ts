@@ -5,7 +5,12 @@ export type PreviewTemplateStyle =
   | "fashion-catalog"
   | "company-modern"
   | "company-elegant"
-  | "company-minimal";
+  | "company-minimal"
+  | "corporate-finance"
+  | "technology-saas"
+  | "creative-agency"
+  | "wellness-health"
+  | "conversion-landing";
 
 export interface PreviewPageData {
   businessName: string;
@@ -19,13 +24,26 @@ export interface PreviewPageData {
   colorScheme: string;
 }
 
-const THEMES: Record<string, { primary: string; light: string; ink: string }> = {
-  indigo: { primary: "#4f46e5", light: "#eef2ff", ink: "#171832" },
-  emerald: { primary: "#059669", light: "#ecfdf5", ink: "#102b24" },
-  amber: { primary: "#d97706", light: "#fffbeb", ink: "#33220f" },
-  rose: { primary: "#e11d48", light: "#fff1f2", ink: "#35131d" },
-  violet: { primary: "#7c3aed", light: "#f5f3ff", ink: "#24163b" },
-  slate: { primary: "#475569", light: "#f1f5f9", ink: "#111827" },
+const THEMES: Record<string, { primary: string; light: string; ink: string; background: string }> = {
+  indigo: { primary: "#4f46e5", light: "#eef2ff", ink: "#171832", background: "#ffffff" },
+  emerald: { primary: "#059669", light: "#ecfdf5", ink: "#102b24", background: "#ffffff" },
+  amber: { primary: "#d97706", light: "#fffbeb", ink: "#33220f", background: "#ffffff" },
+  rose: { primary: "#e11d48", light: "#fff1f2", ink: "#35131d", background: "#ffffff" },
+  violet: { primary: "#7c3aed", light: "#f5f3ff", ink: "#24163b", background: "#ffffff" },
+  slate: { primary: "#475569", light: "#f1f5f9", ink: "#111827", background: "#ffffff" },
+  ivory: { primary: "#8a6e50", light: "#f1ebdf", ink: "#30271f", background: "#faf7f0" },
+  beige: { primary: "#987856", light: "#e9ddcc", ink: "#392f25", background: "#f4eee5" },
+  taupe: { primary: "#7c6657", light: "#e5ddd5", ink: "#302721", background: "#f2eeea" },
+  brown: { primary: "#795548", light: "#ead9cb", ink: "#34241d", background: "#f5eee9" },
+  black: { primary: "#c6a76d", light: "#282522", ink: "#f8f5ef", background: "#171717" },
+  white: { primary: "#24466b", light: "#f1f5f9", ink: "#1f2937", background: "#ffffff" },
+  navy: { primary: "#284c77", light: "#dfe9f4", ink: "#162a43", background: "#f2f6fb" },
+  charcoal: { primary: "#d0b477", light: "#343a40", ink: "#f6f4ef", background: "#262a2f" },
+  "dark-slate": { primary: "#8ab4d6", light: "#334155", ink: "#f1f5f9", background: "#1e293b" },
+  "soft-blue": { primary: "#477ba8", light: "#e0edf6", ink: "#203448", background: "#f2f7fb" },
+  "neon-accent": { primary: "#c6f36b", light: "#282c2d", ink: "#f7f8f4", background: "#17191d" },
+  "sage-green": { primary: "#607b65", light: "#e3eae0", ink: "#26352a", background: "#f2f5f0" },
+  "soft-rose": { primary: "#ad6878", light: "#f2e2e5", ink: "#38272b", background: "#fbf3f4" },
 };
 
 function escape(value: string): string {
@@ -108,19 +126,49 @@ export function renderPremiumProfileHTML(data: PreviewPageData, style: Exclude<P
   const about = escape(data.aboutText);
   const address = escape(data.address ?? "");
   const theme = THEMES[data.colorScheme] ?? THEMES.indigo;
+  const isDarkTheme = ["black", "charcoal", "dark-slate", "neon-accent"].includes(data.colorScheme);
   const icon = data.category === "Kuliner" ? "✦" : data.category === "Fashion" ? "✧" : "◈";
   const contactUrl = safeUrl(waLink(data.phone, `Halo ${data.ownerName ?? data.businessName}, saya ingin tahu lebih lanjut tentang ${data.businessName}.`));
   const services = data.services.map((service, index) => `<article class="service"><span>0${index + 1}</span><h3>${escape(service)}</h3><i>↗</i></article>`).join("");
-  const titleFont = style === "company-elegant" ? "Georgia,serif" : "Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
+  const titleFont = style === "company-elegant" || style === "corporate-finance"
+    ? "Georgia,serif"
+    : "Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
+  const styleConfig = {
+    "company-modern": { label: "WEBSENSIAL WEBSITE CONCEPT", hero: "linear-gradient(110deg,#111827ed,#17202bd9),radial-gradient(ellipse at 80% 20%,var(--primary),transparent 55%)", navHeight: "72px", radius: "14px", sectionEyebrow: "Yang Kami Tawarkan" },
+    "company-elegant": { label: "EDITORIAL COMPANY PROFILE", hero: "linear-gradient(115deg,#201b18,#483a2f)", navHeight: "76px", radius: "2px", sectionEyebrow: "Layanan Pilihan" },
+    "company-minimal": { label: "MINIMAL COMPANY PROFILE", hero: "linear-gradient(135deg,var(--soft),#ffffff)", navHeight: "72px", radius: "8px", sectionEyebrow: "Fokus Layanan" },
+    "corporate-finance": { label: "CORPORATE · TRUSTED ADVISORY", hero: "linear-gradient(120deg,#10233d,#27476b)", navHeight: "78px", radius: "3px", sectionEyebrow: "Keahlian Kami" },
+    "technology-saas": { label: "TECHNOLOGY · BUILT FOR WHAT'S NEXT", hero: "radial-gradient(ellipse at 75% 15%,#3567a8,#152238 58%,#111827)", navHeight: "72px", radius: "16px", sectionEyebrow: "Platform Capabilities" },
+    "creative-agency": { label: "INDEPENDENT CREATIVE STUDIO", hero: "linear-gradient(120deg,#181818,#303336)", navHeight: "72px", radius: "4px", sectionEyebrow: "Selected Expertise" },
+    "wellness-health": { label: "WELLNESS · CARE IN EVERY DETAIL", hero: "linear-gradient(120deg,#34473b,#748a73)", navHeight: "74px", radius: "24px", sectionEyebrow: "Perawatan & Layanan" },
+    "conversion-landing": { label: "SOLUSI UNTUK KEBUTUHAN ANDA", hero: "linear-gradient(120deg,#10233d,#284f79)", navHeight: "68px", radius: "12px", sectionEyebrow: "Manfaat Utama" },
+  } as const;
+  const config = styleConfig[style] ?? styleConfig["company-modern"];
+  const heroTextColor = style === "company-minimal" ? "var(--ink)" : "#fff";
+  const heroSubtextColor = style === "company-minimal" ? "#525b65" : "#e2e5e9";
+  const heroEyebrowColor = style === "company-minimal" ? "var(--primary)" : "#f0d693";
+  const primaryTextColor = ["black", "charcoal", "dark-slate", "neon-accent"].includes(data.colorScheme)
+    ? "#17191d"
+    : "#fff";
+  const ctaBackground = style === "company-minimal" ? "var(--primary)" : isDarkTheme ? "var(--primary)" : "var(--soft)";
+  const ctaForeground = style === "company-minimal" || isDarkTheme ? primaryTextColor : "var(--ink)";
+  const demoForeground = isDarkTheme ? "#fff" : "var(--ink)";
+  const ctaLabel = style === "conversion-landing" ? "Minta Konsultasi Gratis" : style === "technology-saas" ? "Jadwalkan Demo" : "Hubungi Kami";
+  const serviceHeading = style === "technology-saas" ? "Solusi yang dirancang untuk berkembang" : style === "conversion-landing" ? "Hasil yang bisa Anda rasakan" : "Layanan unggulan";
+  const demoLabel = style === "company-modern" || style === "company-elegant" || style === "company-minimal"
+    ? "WEBSENSIAL WEBSITE CONCEPT"
+    : config.label;
+  const closeRadius = style === "corporate-finance" || style === "company-elegant" || style === "creative-agency" ? "3px" : config.radius;
+  const aboutRadius = style === "wellness-health" ? "24px" : style === "company-elegant" ? "2px" : "18px";
 
   return `${pageHead(data.businessName, data.tagline, `
-    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;color:var(--ink);font-family:${titleFont};background:#fff;--primary:${theme.primary};--soft:${theme.light};--ink:${theme.ink};--muted:#727782}.demo{padding:9px 18px;background:#151922;color:#fff;text-align:center;font:11px Inter,system-ui,sans-serif;letter-spacing:.04em}.demo b{color:#d9c38b}nav{height:72px;display:flex;align-items:center;justify-content:space-between;max-width:1120px;padding:0 24px;margin:auto}.brand{font-size:16px;font-weight:800;text-decoration:none;color:var(--ink)}.brand span{color:var(--primary)}nav a:last-child,.cta{background:var(--primary);color:#fff;padding:12px 18px;border-radius:${style === "company-elegant" ? "3px" : style === "company-minimal" ? "8px" : "999px"};text-decoration:none;font:700 12px Inter,system-ui,sans-serif}.hero{min-height:490px;background:linear-gradient(110deg,#111827ed,#17202bd9),radial-gradient(ellipse at 80% 20%,var(--primary),transparent 55%);color:white;display:flex;align-items:center}.hero-inner{width:min(1120px,100%);padding:76px 24px;margin:auto}.eyebrow{text-transform:uppercase;letter-spacing:.18em;color:#d9c38b;font:700 11px Inter,system-ui,sans-serif}.hero h1{font-size:clamp(42px,7vw,76px);line-height:1.03;letter-spacing:-.045em;max-width:850px;margin:18px 0}.hero p{max-width:620px;color:#e2e5e9;font-size:17px;line-height:1.7;margin:0 0 28px}.hero .cta{display:inline-block;background:#fff;color:var(--ink);padding:15px 22px}.section{max-width:1120px;margin:auto;padding:82px 24px}.section-heading{display:flex;justify-content:space-between;align-items:end;gap:20px;margin-bottom:30px}.section-heading small{color:var(--primary);font:800 11px Inter,system-ui,sans-serif;letter-spacing:.15em;text-transform:uppercase}.section-heading h2{font-size:clamp(28px,4vw,42px);letter-spacing:-.03em;margin:8px 0 0}.service-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.service{position:relative;padding:24px;border:1px solid #e8e8e5;border-radius:${style === "company-elegant" ? "2px" : style === "company-minimal" ? "8px" : "14px"};min-height:122px;display:flex;flex-direction:column;justify-content:space-between}.service span{color:var(--primary);font:700 11px Inter,system-ui,sans-serif}.service h3{font-size:18px;margin:20px 25px 0 0}.service i{position:absolute;right:22px;bottom:20px;color:var(--primary);font-style:normal}.about{background:var(--soft)}.about-inner{max-width:1120px;margin:auto;padding:72px 24px;display:grid;grid-template-columns:.8fr 1.2fr;gap:70px;align-items:center}.about-mark{aspect-ratio:1.1;border-radius:${style === "company-elegant" ? "2px" : "18px"};background:linear-gradient(145deg,var(--primary),var(--ink));display:grid;place-items:center;color:white;font-size:96px}.about h2{font-size:clamp(28px,4vw,42px);letter-spacing:-.03em;margin:10px 0}.about p{color:#525b65;line-height:1.9;font-size:15px}.contact{max-width:900px;margin:68px auto;padding:54px 24px;border-radius:${style === "company-elegant" ? "2px" : "20px"};background:var(--ink);color:#fff;text-align:center}.contact h2{font-size:clamp(28px,4vw,42px);margin:12px 0}.contact p{color:#d5d8dd;margin:0 0 24px}.contact .cta{display:inline-block}.contact-info{margin-top:18px;color:#bec3cb;font:12px Inter,system-ui,sans-serif}footer{border-top:1px solid #e8e8e5;text-align:center;padding:24px;color:var(--muted);font:11px Inter,system-ui,sans-serif}@media(max-width:700px){nav{height:62px;padding:0 16px}.hero{min-height:410px}.hero-inner{padding:60px 20px}.hero p{font-size:15px}.section{padding:58px 18px}.service-grid{grid-template-columns:1fr 1fr;gap:8px}.service{padding:16px;min-height:112px}.service h3{font-size:15px}.about-inner{padding:56px 18px;grid-template-columns:1fr;gap:25px}.about-mark{aspect-ratio:1.8;font-size:65px}.contact{margin:38px 14px;padding:42px 18px}.section-heading{align-items:start;flex-direction:column}}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;color:var(--ink);font-family:${titleFont};background:${theme.background};--primary:${theme.primary};--soft:${theme.light};--ink:${theme.ink};--muted:color-mix(in srgb,var(--ink) 62%,transparent)}.demo{padding:9px 18px;background:${isDarkTheme ? "var(--ink)" : "#f1f2f4"};color:${demoForeground};text-align:center;font:11px Inter,system-ui,sans-serif;letter-spacing:.08em}.demo b{color:var(--primary)}nav{height:${config.navHeight};display:flex;align-items:center;justify-content:space-between;max-width:1120px;padding:0 24px;margin:auto}.brand{font-size:16px;font-weight:800;text-decoration:none;color:var(--ink)}.brand span{color:var(--primary)}nav a:last-child,.cta{background:var(--primary);color:${primaryTextColor};padding:12px 18px;border-radius:${closeRadius};text-decoration:none;font:700 12px Inter,system-ui,sans-serif}.hero{min-height:${style === "conversion-landing" ? "420px" : "490px"};background:${config.hero};color:${heroTextColor};display:flex;align-items:center}.hero-inner{width:min(1120px,100%);padding:76px 24px;margin:auto}.eyebrow{text-transform:uppercase;letter-spacing:.18em;color:${heroEyebrowColor};font:700 11px Inter,system-ui,sans-serif}.hero h1{font-size:clamp(42px,7vw,76px);line-height:1.03;letter-spacing:-.045em;max-width:850px;margin:18px 0}.hero p{max-width:620px;color:${heroSubtextColor};font-size:17px;line-height:1.7;margin:0 0 28px}.hero .cta{display:inline-block;background:${ctaBackground};color:${ctaForeground};padding:15px 22px}.section{max-width:1120px;margin:auto;padding:82px 24px}.section-heading{display:flex;justify-content:space-between;align-items:end;gap:20px;margin-bottom:30px}.section-heading small{color:var(--primary);font:800 11px Inter,system-ui,sans-serif;letter-spacing:.15em;text-transform:uppercase}.section-heading h2{font-size:clamp(28px,4vw,42px);letter-spacing:-.03em;margin:8px 0 0}.service-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.service{position:relative;padding:24px;border:1px solid color-mix(in srgb,var(--ink) 14%,transparent);border-radius:${closeRadius};min-height:122px;display:flex;flex-direction:column;justify-content:space-between}.service span{color:var(--primary);font:700 11px Inter,system-ui,sans-serif}.service h3{font-size:18px;margin:20px 25px 0 0}.service i{position:absolute;right:22px;bottom:20px;color:var(--primary);font-style:normal}.about{background:var(--soft)}.about-inner{max-width:1120px;margin:auto;padding:72px 24px;display:grid;grid-template-columns:.8fr 1.2fr;gap:70px;align-items:center}.about-mark{aspect-ratio:1.1;border-radius:${aboutRadius};background:linear-gradient(145deg,var(--primary),var(--ink));display:grid;place-items:center;color:white;font-size:96px}.about h2{font-size:clamp(28px,4vw,42px);letter-spacing:-.03em;margin:10px 0}.about p{color:color-mix(in srgb,var(--ink) 76%,transparent);line-height:1.9;font-size:15px}.contact{max-width:900px;margin:68px auto;padding:54px 24px;border-radius:${style === "wellness-health" ? "24px" : style === "company-elegant" ? "2px" : "20px"};background:#111827;color:#fff;text-align:center}.contact h2{font-size:clamp(28px,4vw,42px);margin:12px 0}.contact p{color:#d5d8dd;margin:0 0 24px}.contact .cta{display:inline-block}.contact-info{margin-top:18px;color:#bec3cb;font:12px Inter,system-ui,sans-serif}footer{border-top:1px solid #e8e8e5;text-align:center;padding:24px;color:var(--muted);font:11px Inter,system-ui,sans-serif}@media(max-width:700px){nav{height:62px;padding:0 16px}.hero{min-height:410px}.hero-inner{padding:60px 20px}.hero p{font-size:15px}.section{padding:58px 18px}.service-grid{grid-template-columns:1fr 1fr;gap:8px}.service{padding:16px;min-height:112px}.service h3{font-size:15px}.about-inner{padding:56px 18px;grid-template-columns:1fr;gap:25px}.about-mark{aspect-ratio:1.8;font-size:65px}.contact{margin:38px 14px;padding:42px 18px}.section-heading{align-items:start;flex-direction:column}}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
   `)}</head><body>
-    <div class="demo">WEBSENSIAL WEBSITE CONCEPT <b>· PREMIUM PREVIEW</b></div>
+    <div class="demo">${demoLabel} <b>· PREMIUM PREVIEW</b></div>
     <nav><a class="brand" href="#top">${icon} <span>${name}</span></a><a href="${safeUrl(contactUrl)}">Konsultasi ↗</a></nav>
-    <main id="top"><section class="hero"><div class="hero-inner"><div class="eyebrow">${category} · ${name}</div><h1>${htmlText(data.tagline)}</h1><p>${htmlText(data.aboutText)}</p><a class="cta" href="${safeUrl(contactUrl)}">Hubungi Kami&nbsp; ↗</a></div></section>
-      <section class="section"><div class="section-heading"><div><small>Yang Kami Tawarkan</small><h2>Layanan unggulan</h2></div></div><div class="service-grid">${services}</div></section>
-      <section class="about"><div class="about-inner"><div class="about-mark" aria-hidden="true">${icon}</div><div><div class="eyebrow">Tentang Kami</div><h2>Mengutamakan kualitas di setiap detail.</h2><p>${htmlText(data.aboutText)}</p>${address ? `<p>⌖ ${address}</p>` : ""}</div></div></section>
+    <main id="top"><section class="hero"><div class="hero-inner"><div class="eyebrow">${category} · ${name}</div><h1>${htmlText(data.tagline)}</h1><p>${htmlText(data.aboutText)}</p><a class="cta" href="${safeUrl(contactUrl)}">${ctaLabel}&nbsp; ↗</a></div></section>
+      <section class="section"><div class="section-heading"><div><small>${config.sectionEyebrow}</small><h2>${serviceHeading}</h2></div></div><div class="service-grid">${services}</div></section>
+      <section class="about"><div class="about-inner"><div class="about-mark" aria-hidden="true">${icon}</div><div><div class="eyebrow">Tentang Kami</div><h2>${style === "technology-saas" ? "Teknologi yang membuat kerja lebih sederhana." : style === "corporate-finance" ? "Kepercayaan dibangun dari setiap keputusan." : style === "creative-agency" ? "Ide kuat. Eksekusi yang berkesan." : style === "wellness-health" ? "Perhatian penuh untuk kebutuhan Anda." : "Mengutamakan kualitas di setiap detail."}</h2><p>${htmlText(data.aboutText)}</p>${address ? `<p>⌖ ${address}</p>` : ""}</div></div></section>
       <section class="contact" id="contact"><div class="eyebrow">Kami siap membantu</div><h2>Mari mulai percakapan.</h2><p>Ceritakan kebutuhan Anda, kami dengan senang hati membantu.</p><a class="cta" href="${safeUrl(contactUrl)}" target="_blank" rel="noopener">Chat via WhatsApp ↗</a>${data.phone ? `<div class="contact-info">${escape(data.phone)}</div>` : ""}</section>
     </main><footer>© ${new Date().getFullYear()} ${name} · ${category} <br><br>Website concept by Websensial</footer>
   </body></html>`;

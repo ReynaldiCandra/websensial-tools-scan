@@ -54,7 +54,7 @@ type AuthState = {
 function LoadingScreen() {
   return (
     <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-3 bg-background">
-      <img src="/websensial-logo.png" alt="Websensial" className="h-10 w-auto object-contain" />
+      <img src="/websensial-logo.png" alt="Websensial" className="h-14 w-14 rounded-xl object-contain" />
       <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
       <span className="text-xs text-muted-foreground">Memeriksa sesi…</span>
     </div>

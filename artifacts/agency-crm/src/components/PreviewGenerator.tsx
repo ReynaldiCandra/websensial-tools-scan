@@ -35,6 +35,12 @@ interface PreviewRecord {
 const CATEGORY_OPTIONS = [
   "Company Profile",
   "Fashion",
+  "Fashion & Luxury",
+  "Corporate, Hukum, & Keuangan",
+  "Teknologi & SaaS",
+  "Portofolio Kreatif & Agensi",
+  "Wellness, Skincare, & Kesehatan",
+  "Landing Page High Konversi (Iklan Meta & Google Ads)",
   "Kuliner",
   "Salon & Kecantikan",
   "Otomotif",
@@ -56,17 +62,44 @@ const CATEGORY_OPTIONS = [
 ];
 
 const TEMPLATE_OPTIONS = [
-  { value: "fashion-catalog", label: "Fashion Catalog", description: "Kartu produk, diskon, harga, dan tombol WhatsApp" },
-  { value: "company-modern", label: "Company Profile Modern", description: "Hero premium dengan tampilan bisnis modern" },
-  { value: "company-elegant", label: "Company Profile Elegant", description: "Tipografi editorial dengan nuansa elegan" },
-  { value: "company-minimal", label: "Company Profile Minimal", description: "Layout minimalis, bersih, dan fokus pada layanan" },
-  { value: "classic", label: "Landing Page Classic", description: "Landing page sederhana untuk semua kategori" },
+  { value: "fashion-catalog", label: "Fashion Catalog", description: "Kartu produk, diskon, harga, dan WhatsApp" },
+  { value: "company-modern", label: "Company Profile Modern", description: "Company profile premium serbaguna" },
+  { value: "company-elegant", label: "Company Profile Elegant", description: "Tipografi editorial dan layout berkelas" },
+  { value: "company-minimal", label: "Company Profile Minimal", description: "Layout bersih, fokus pada layanan" },
+  { value: "corporate-finance", label: "Corporate, Hukum & Keuangan", description: "Tampilan tepercaya dan formal" },
+  { value: "technology-saas", label: "Teknologi & SaaS", description: "Tampilan produk digital modern" },
+  { value: "creative-agency", label: "Portofolio Kreatif & Agensi", description: "Tata letak ekspresif untuk karya dan layanan" },
+  { value: "wellness-health", label: "Wellness, Skincare & Kesehatan", description: "Nuansa lembut, natural, dan menenangkan" },
+  { value: "conversion-landing", label: "Landing Page High Konversi (Iklan Meta & Google Ads)", description: "Landing page fokus konversi untuk trafik iklan" },
+  { value: "classic", label: "Landing Page Classic", description: "Landing page sederhana serbaguna" },
 ];
 
-const defaultTemplateFor = (pageCategory: string) =>
-  pageCategory === "Fashion" ? "fashion-catalog" : "company-modern";
+const PALETTE_GROUPS: Record<string, string[]> = {
+  "Company Profile": ["ivory", "beige", "taupe", "brown", "black"],
+  "Fashion": ["ivory", "beige", "taupe", "brown", "black"],
+  "Fashion & Luxury": ["ivory", "beige", "taupe", "brown", "black"],
+  "Corporate, Hukum, & Keuangan": ["white", "ivory", "navy", "charcoal", "black"],
+  "Teknologi & SaaS": ["charcoal", "dark-slate", "navy", "soft-blue", "ivory"],
+  "Portofolio Kreatif & Agensi": ["black", "charcoal", "ivory", "neon-accent"],
+  "Wellness, Skincare, & Kesehatan": ["ivory", "taupe", "sage-green", "soft-rose", "brown"],
+  "Landing Page High Konversi": ["navy", "soft-blue", "white", "charcoal", "neon-accent"],
+  "Landing Page High Konversi (Iklan Meta & Google Ads)": ["navy", "soft-blue", "white", "charcoal", "neon-accent"],
+};
 
 const COLOR_OPTIONS = [
+  { value: "ivory", label: "Ivory", color: "#f7f3e9" },
+  { value: "beige", label: "Beige", color: "#e8dcc8" },
+  { value: "taupe", label: "Taupe", color: "#9a8878" },
+  { value: "brown", label: "Brown", color: "#795548" },
+  { value: "black", label: "Black", color: "#171717" },
+  { value: "white", label: "White", color: "#ffffff" },
+  { value: "navy", label: "Navy", color: "#183153" },
+  { value: "charcoal", label: "Charcoal", color: "#343a40" },
+  { value: "dark-slate", label: "Dark Slate", color: "#334155" },
+  { value: "soft-blue", label: "Soft Blue", color: "#9bbfe0" },
+  { value: "neon-accent", label: "Neon Accent", color: "#c6f36b" },
+  { value: "sage-green", label: "Sage Green", color: "#91a58b" },
+  { value: "soft-rose", label: "Soft Rose", color: "#d9aab0" },
   { value: "indigo", label: "Indigo", color: "#4f46e5" },
   { value: "emerald", label: "Emerald", color: "#059669" },
   { value: "amber", label: "Amber", color: "#d97706" },
@@ -75,14 +108,31 @@ const COLOR_OPTIONS = [
   { value: "slate", label: "Slate", color: "#475569" },
 ];
 
+function colorsForCategory(pageCategory: string) {
+  const values = PALETTE_GROUPS[pageCategory] ?? ["indigo", "emerald", "amber", "rose", "violet", "slate"];
+  return values.map((value) => COLOR_OPTIONS.find((option) => option.value === value)!).filter(Boolean);
+}
+
+const defaultTemplateFor = (pageCategory: string) => {
+  if (pageCategory === "Fashion" || pageCategory === "Fashion & Luxury") return "fashion-catalog";
+  if (pageCategory === "Corporate, Hukum, & Keuangan") return "corporate-finance";
+  if (pageCategory === "Teknologi & SaaS") return "technology-saas";
+  if (pageCategory === "Portofolio Kreatif & Agensi") return "creative-agency";
+  if (pageCategory === "Wellness, Skincare, & Kesehatan") return "wellness-health";
+  if (pageCategory.startsWith("Landing Page High Konversi")) return "conversion-landing";
+  return "company-modern";
+};
+
 export function PreviewGenerator({ prospectId, businessName, category, phone }: Props) {
   const { toast } = useToast();
   const [tagline, setTagline] = useState("");
   const [services, setServices] = useState("");
   const [aboutText, setAboutText] = useState("");
-  const [colorScheme, setColorScheme] = useState("indigo");
   const [pageCategory, setPageCategory] = useState(
     CATEGORY_OPTIONS.includes(category) ? category : "Company Profile",
+  );
+  const [colorScheme, setColorScheme] = useState(() =>
+    colorsForCategory(CATEGORY_OPTIONS.includes(category) ? category : "Company Profile")[0]?.value ?? "indigo",
   );
   const [templateStyle, setTemplateStyle] = useState(() => defaultTemplateFor(category));
   const [generating, setGenerating] = useState(false);
@@ -185,6 +235,7 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
                 onValueChange={(value) => {
                   setPageCategory(value);
                   setTemplateStyle(defaultTemplateFor(value));
+                  setColorScheme(colorsForCategory(value)[0]?.value ?? "indigo");
                 }}
               >
                 <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
@@ -215,7 +266,9 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
           <p className="text-[11px] text-muted-foreground">
             {templateStyle === "fashion-catalog"
               ? "Katalog memakai kartu produk contoh (bukan katalog atau harga asli)."
-              : "Pilih gaya company profile yang paling cocok untuk presentasi ke client."}
+              : templateStyle === "conversion-landing"
+                ? "Layout ringkas dengan CTA utama untuk trafik iklan Meta dan Google."
+                : "Palet warna mengikuti karakter kategori bisnis yang dipilih."}
           </p>
           <div className="space-y-1.5">
             <Label className="text-xs">Tagline (opsional)</Label>
@@ -248,17 +301,19 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
           <div className="space-y-1.5">
             <Label className="text-xs">Warna tema</Label>
             <div className="flex gap-2 flex-wrap">
-              {COLOR_OPTIONS.map((c) => (
+              {colorsForCategory(pageCategory).map((c) => (
                 <button
                   key={c.value}
                   onClick={() => setColorScheme(c.value)}
+                  type="button"
+                  aria-pressed={colorScheme === c.value}
                   className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full border transition-all ${
                     colorScheme === c.value
                       ? "border-foreground shadow-sm font-semibold"
                       : "border-border hover:border-muted-foreground"
                   }`}
                 >
-                  <span className="w-3 h-3 rounded-full" style={{ background: c.color }} />
+                  <span className={`h-4 w-4 rounded-full border ${c.value === "white" || c.value === "ivory" ? "border-black/20" : "border-transparent"}`} style={{ background: c.color }} />
                   {c.label}
                 </button>
               ))}

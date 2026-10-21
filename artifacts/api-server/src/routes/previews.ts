@@ -551,6 +551,17 @@ router.get("/previews/prospect/:id", async (req, res) => {
   }
 });
 
+export function previewContentSecurityPolicy(templateStyle: string, pageCategory: string): string {
+  const allowsRemoteImages = [
+    "fashion-catalog", "hotel-property", "tour-travel", "online-course", "restaurant",
+    "company-modern", "company-elegant", "company-minimal", "corporate-finance",
+    "technology-saas", "creative-agency", "wellness-health", "conversion-landing",
+  ].includes(templateStyle) || (pageCategory === "Konstruksi & Renovasi" && templateStyle === "company-modern");
+  return allowsRemoteImages
+    ? "default-src 'none'; style-src 'unsafe-inline'; img-src https://images.unsplash.com https://res.cloudinary.com data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    : "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+}
+
 // GET /preview/:token — serve the HTML page (public)
 publicPreviewsRouter.get("/preview/:token", async (req, res) => {
   try {
@@ -595,12 +606,7 @@ publicPreviewsRouter.get("/preview/:token", async (req, res) => {
     // Defense in depth: escaping already removes markup from business data, but
     // this page is public and needs no script at all, so even a missed escape
     // cannot execute JavaScript here.
-    res.setHeader(
-      "Content-Security-Policy",
-      ["fashion-catalog", "hotel-property", "tour-travel", "online-course", "restaurant"].includes(row.templateStyle) || (row.pageCategory === "Konstruksi & Renovasi" && row.templateStyle === "company-modern")
-        ? "default-src 'none'; style-src 'unsafe-inline'; img-src https://images.unsplash.com https://res.cloudinary.com data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
-        : "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
-    );
+    res.setHeader("Content-Security-Policy", previewContentSecurityPolicy(row.templateStyle, row.pageCategory));
     return res.send(html);
   } catch (err) {
     req.log.error({ err }, "Failed to serve preview");

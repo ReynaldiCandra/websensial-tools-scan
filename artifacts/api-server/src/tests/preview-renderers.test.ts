@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { renderConstructionProfileHTML, renderFashionCatalogHTML, renderIndustryLandingHTML, type PreviewPageData } from "../lib/preview-html";
-import { generatePreviewHTML } from "../routes/previews";
+import { generatePreviewHTML, previewContentSecurityPolicy } from "../routes/previews";
 
 const base: PreviewPageData = {
   businessName: "Studio Uji <Demo>",
@@ -58,6 +58,18 @@ describe("preview landing page renderers", () => {
     assert.ok(html.includes('src="https://res.cloudinary.com/demo/image/upload/logo.png"'));
     assert.ok(html.includes('src="https://res.cloudinary.com/demo/image/upload/hero.png"'));
     assert.match(html, /VISUAL DEMO/); assert.doesNotMatch(html, /src="javascript:/i);
+  });
+
+  it("shows an uploaded Cloudinary logo in the company profile header", () => {
+    const html = generatePreviewHTML({ ...base, category: "Company Profile", pageCategory: "Company Profile", templateStyle: "company-modern", logoUrl: "https://res.cloudinary.com/demo/image/upload/company-logo.png" });
+    assert.match(html, /class="brand-logo" src="https:\/\/res\.cloudinary\.com\/demo\/image\/upload\/company-logo\.png" alt="Logo Studio Uji &lt;Demo&gt;"/);
+  });
+
+  it("allows only required remote image hosts for company profile previews", () => {
+    const csp = previewContentSecurityPolicy("company-modern", "Company Profile");
+    assert.match(csp, /img-src https:\/\/images\.unsplash\.com https:\/\/res\.cloudinary\.com data:/);
+    assert.doesNotMatch(csp, /script-src|https:\/\/example\.com/);
+    assert.doesNotMatch(previewContentSecurityPolicy("classic", "Company Profile"), /https:\/\/res\.cloudinary\.com/);
   });
 
   it("renders construction as a visual company profile with transparent demo portfolio", () => {

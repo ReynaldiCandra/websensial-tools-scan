@@ -41,14 +41,15 @@ export function Settings() {
   return (
     <div className="flex flex-col gap-6 max-w-3xl">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
-        <p className="text-muted-foreground mt-1">Manage your agency preferences and profile.</p>
+        <p className="ws-eyebrow">Workspace</p>
+        <h1 className="ws-page-heading-title mt-1 text-[1.75rem] font-semibold tracking-tight sm:text-[2rem]">Pengaturan</h1>
+        <p className="mt-1.5 text-sm leading-6 text-muted-foreground">Kelola preferensi dan profil agensi Anda.</p>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Agency Profile</CardTitle>
-          <CardDescription>Update your agency details used in invoices and outreach.</CardDescription>
+          <CardDescription>Perbarui detail agensi yang digunakan pada invoice dan komunikasi prospek.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {isLoading ? (

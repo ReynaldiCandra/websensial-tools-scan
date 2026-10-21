@@ -592,14 +592,15 @@ export function Prospecting() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Prospecting Tool</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Cari bisnis tanpa website di kota pilihan, lalu import langsung ke pipeline.
-        </p>
+      <div className="ws-page-heading">
+        <div>
+          <p className="ws-eyebrow">Mesin akuisisi pelanggan</p>
+          <h1>Cari Prospek</h1>
+          <p>Temukan bisnis potensial dan identifikasi kebutuhan website mereka. Simpan hasil langsung ke pipeline atau impor dari CSV.</p>
+        </div>
       </div>
 
-      <Card className={quota?.configured ? "border-primary/30 bg-primary/5" : undefined}>
+      <Card className={`ws-card ${quota?.configured ? "border-primary/25 bg-primary/[0.035]" : ""}`}>
         <CardContent className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-3 text-sm">
           <div className="flex flex-wrap items-center gap-2">
             <Gauge className="h-4 w-4 shrink-0 text-primary" />
@@ -671,10 +672,10 @@ export function Prospecting() {
         </TabsList>
 
         {/* ── TAB: SEARCH ── */}
-        <TabsContent value="search" className="space-y-4 mt-4">
-          <Card>
+        <TabsContent value="search" className="mt-4 space-y-4">
+          <Card className="ws-card">
             <CardHeader className="pb-4">
-              <CardTitle className="text-base">Filter Pencarian</CardTitle>
+              <CardTitle className="ws-section-title">Kriteria pencarian</CardTitle>
               <CardDescription>
                 Data dari Google Maps (nama, rating, nomor HP, status website) — atau OpenStreetMap bila API key belum aktif.
               </CardDescription>
@@ -788,8 +789,8 @@ export function Prospecting() {
                   </p>
                 </div>
               )}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 flex-wrap items-center gap-3">
                   <p className="text-sm font-medium">
                     Ditemukan <span className="text-primary font-bold">{results.length}</span> bisnis
                     {searchMeta && ` — ${searchMeta.category} di ${searchMeta.city}`}
@@ -866,7 +867,7 @@ export function Prospecting() {
                     <div
                       key={key}
                       onClick={() => toggleSelect(key)}
-                      className={`flex items-center gap-4 rounded-lg border p-3 cursor-pointer transition-colors ${
+                      className={`flex min-w-0 items-start gap-3 rounded-xl border p-3 transition-colors sm:items-center sm:gap-4 sm:p-4 ${
                         selected.has(key)
                           ? "border-primary/50 bg-primary/5"
                           : "border-border hover:border-muted-foreground/30 hover:bg-muted/30"
@@ -917,7 +918,7 @@ export function Prospecting() {
                           {r.address && <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{r.address}</span>}
                         </div>
                       </div>
-                      <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex shrink-0 flex-col items-end gap-1 self-center sm:flex-row" onClick={(e) => e.stopPropagation()}>
                         {toWaNumber(r.phone) !== "" && (
                           <Button
                             variant="ghost"
@@ -970,10 +971,10 @@ export function Prospecting() {
         </TabsContent>
 
         {/* ── TAB: CSV IMPORT ── */}
-        <TabsContent value="csv" className="space-y-4 mt-4">
-          <Card>
+        <TabsContent value="csv" className="mt-4 space-y-4">
+          <Card className="ws-card">
             <CardHeader className="pb-4">
-              <CardTitle className="text-base">Import dari CSV</CardTitle>
+              <CardTitle className="ws-section-title">Import dari CSV</CardTitle>
               <CardDescription>
                 Paste CSV dari ekstensi G Maps Leads Finder / Maps Business Finder atau Google Sheets — kolom
                 terdeteksi otomatis dari baris header. Tanpa header, urutan kolom: Nama Bisnis, No HP, Alamat, Kategori, Link Maps.
@@ -1062,7 +1063,7 @@ export function Prospecting() {
                         return next;
                       })
                     }
-                    className={`flex items-center gap-4 rounded-lg border p-3 cursor-pointer transition-colors ${
+                    className={`flex min-w-0 items-start gap-3 rounded-xl border p-3 transition-colors sm:items-center sm:gap-4 sm:p-4 ${
                       csvSelected.has(i)
                         ? "border-primary/50 bg-primary/5"
                         : "border-border hover:bg-muted/30"

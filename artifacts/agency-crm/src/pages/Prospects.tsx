@@ -25,7 +25,7 @@ import {
   SheetTitle, 
   SheetTrigger 
 } from "@/components/ui/sheet";
-import { Search, Plus, MapPin, Phone, Globe } from "lucide-react";
+import { Search, Plus, MapPin, Phone, Globe, ArrowUpRight } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -80,35 +80,36 @@ export function Prospects() {
   const onSubmit = (values: z.infer<typeof formSchema>) => {
     createProspect.mutate({ data: values }, {
       onSuccess: () => {
-        toast({ title: "Prospect created successfully." });
+        toast({ title: "Prospek berhasil ditambahkan." });
         queryClient.invalidateQueries({ queryKey: getListProspectsQueryKey() });
         setIsSheetOpen(false);
         form.reset();
       },
       onError: (err) => {
-        toast({ title: "Failed to create prospect", variant: "destructive" });
+        toast({ title: "Gagal menambahkan prospek", variant: "destructive" });
       }
     });
   };
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="ws-page-heading">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Prospects</h1>
-          <p className="text-muted-foreground mt-1">Manage your leads and client acquisition.</p>
+          <p className="ws-eyebrow">Akuisisi pelanggan</p>
+          <h1>Prospek</h1>
+          <p>Kelola calon klien dan pantau langkah berikutnya dalam proses penjualan.</p>
         </div>
         
         <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
           <SheetTrigger asChild>
-            <Button className="gap-2">
+            <Button className="h-10 gap-2 rounded-lg">
               <Plus className="h-4 w-4" />
-              Add Prospect
+              Tambah prospek
             </Button>
           </SheetTrigger>
           <SheetContent className="sm:max-w-md overflow-y-auto">
             <SheetHeader className="mb-6">
-              <SheetTitle>Add New Prospect</SheetTitle>
+              <SheetTitle>Tambah Prospek</SheetTitle>
             </SheetHeader>
             
             <Form {...form}>
@@ -118,7 +119,7 @@ export function Prospects() {
                   name="businessName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Business Name</FormLabel>
+                      <FormLabel>Nama bisnis</FormLabel>
                       <FormControl>
                         <Input placeholder="Warung Kopi Senja" {...field} />
                       </FormControl>
@@ -131,7 +132,7 @@ export function Prospects() {
                   name="ownerName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Owner Name (Optional)</FormLabel>
+                      <FormLabel>Nama pemilik (opsional)</FormLabel>
                       <FormControl>
                         <Input placeholder="Budi Santoso" {...field} />
                       </FormControl>
@@ -144,7 +145,7 @@ export function Prospects() {
                   name="phone"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Phone Number (WA)</FormLabel>
+                      <FormLabel>Nomor WhatsApp</FormLabel>
                       <FormControl>
                         <Input placeholder="081234567890" {...field} />
                       </FormControl>
@@ -157,7 +158,7 @@ export function Prospects() {
                   name="category"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Category</FormLabel>
+                      <FormLabel>Kategori bisnis</FormLabel>
                       <FormControl>
                         <Input placeholder="F&B, Retail, Services..." {...field} />
                       </FormControl>
@@ -170,17 +171,17 @@ export function Prospects() {
                   name="source"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Source</FormLabel>
+                      <FormLabel>Sumber prospek</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Select source" />
+                            <SelectValue placeholder="Pilih sumber" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="manual">Manual Entry</SelectItem>
+                          <SelectItem value="manual">Input manual</SelectItem>
                           <SelectItem value="gmaps">Google Maps</SelectItem>
-                          <SelectItem value="referral">Referral</SelectItem>
+                          <SelectItem value="referral">Referensi</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -188,7 +189,7 @@ export function Prospects() {
                   )}
                 />
                 <Button type="submit" className="w-full mt-6" disabled={createProspect.isPending}>
-                  {createProspect.isPending ? "Creating..." : "Create Prospect"}
+                  {createProspect.isPending ? "Menyimpan…" : "Simpan prospek"}
                 </Button>
               </form>
             </Form>
@@ -196,27 +197,29 @@ export function Prospects() {
         </Sheet>
       </div>
 
-      <div className="flex items-center gap-2 max-w-sm">
-        <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+      <div className="flex items-center gap-3">
+        <div className="relative w-full max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input 
-            placeholder="Search prospects..." 
-            className="pl-9"
+            placeholder="Cari nama, kategori, atau nomor…"
+            aria-label="Cari prospek"
+            className="h-10 rounded-lg pl-9"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
       </div>
 
-      <div className="border rounded-lg bg-card">
+      <div className="ws-card overflow-hidden">
+        <div className="hidden md:block">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Business</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Source</TableHead>
-              <TableHead className="text-right">Action</TableHead>
+              <TableHead>Bisnis</TableHead>
+              <TableHead>Kategori</TableHead>
+              <TableHead>Tahap</TableHead>
+              <TableHead>Sumber</TableHead>
+              <TableHead className="text-right">Aksi</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -233,12 +236,12 @@ export function Prospects() {
             ) : prospects?.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                  No prospects found. Add one to get started.
+                  Belum ada prospek. Tambahkan prospek untuk mulai mengelola pipeline.
                 </TableCell>
               </TableRow>
             ) : (
               prospects?.map((prospect) => (
-                <TableRow key={prospect.id}>
+                <TableRow key={prospect.id} className="text-[13px]">
                   <TableCell>
                     <div className="font-medium text-primary hover:underline">
                       <Link href={`/prospects/${prospect.id}`}>
@@ -247,7 +250,7 @@ export function Prospects() {
                     </div>
                     <div className="flex items-center text-xs text-muted-foreground mt-1 gap-2">
                       <span className="flex items-center gap-1"><Phone className="h-3 w-3"/> {formatPhoneDisplay(prospect.phone)}</span>
-                      {prospect.hasWebsite && <span className="flex items-center gap-1"><Globe className="h-3 w-3"/> Web</span>}
+                      {prospect.hasWebsite && <span className="flex items-center gap-1"><Globe className="h-3 w-3"/> Ada website</span>}
                     </div>
                   </TableCell>
                   <TableCell>{prospect.category}</TableCell>
@@ -257,11 +260,11 @@ export function Prospects() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <span className="text-sm capitalize">{prospect.source}</span>
+                    <span className="text-sm capitalize">{prospect.source === "gmaps" ? "Google Maps" : prospect.source === "manual" ? "Manual" : prospect.source}</span>
                   </TableCell>
                   <TableCell className="text-right">
                     <Link href={`/prospects/${prospect.id}`}>
-                      <Button variant="ghost" size="sm">View</Button>
+                      <Button variant="ghost" size="sm">Lihat</Button>
                     </Link>
                   </TableCell>
                 </TableRow>
@@ -269,6 +272,10 @@ export function Prospects() {
             )}
           </TableBody>
         </Table>
+        </div>
+        <div className="divide-y divide-border md:hidden">
+          {isLoading ? Array.from({ length: 4 }).map((_, index) => <div key={index} className="space-y-3 p-4"><Skeleton className="h-4 w-40" /><Skeleton className="h-3 w-28" /><Skeleton className="h-6 w-24" /></div>) : prospects?.length === 0 ? <div className="p-6 text-center"><p className="text-sm font-medium">Belum ada prospek.</p><p className="mt-1 text-xs text-muted-foreground">Tambahkan prospek untuk mulai membangun pipeline.</p></div> : prospects?.map((prospect) => <Link key={prospect.id} href={`/prospects/${prospect.id}`} className="flex min-w-0 items-start justify-between gap-3 p-4 transition-colors hover:bg-muted/40"><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-foreground">{prospect.businessName}</span><span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted-foreground"><span className="truncate">{prospect.category}</span><span aria-hidden="true">·</span><span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{formatPhoneDisplay(prospect.phone)}</span></span><span className="mt-2 flex flex-wrap items-center gap-2"><Badge variant="outline" className={`${STAGES[prospect.status]?.color || "bg-slate-100 text-slate-700"} border-transparent`}>{STAGES[prospect.status]?.label || prospect.status}</Badge>{prospect.hasWebsite && <Badge variant="secondary">Ada website</Badge>}<span className="text-[10px] capitalize text-muted-foreground">{prospect.source === "gmaps" ? "Google Maps" : prospect.source === "manual" ? "Manual" : prospect.source}</span></span></span><ArrowUpRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" /></Link>)}
+        </div>
       </div>
     </div>
   );

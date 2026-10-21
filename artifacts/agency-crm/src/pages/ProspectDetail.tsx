@@ -60,7 +60,7 @@ export function ProspectDetail() {
   const handleStatusChange = (status: string) => {
     updateStatus.mutate({ id: prospectId, data: { status } }, {
       onSuccess: () => {
-        toast({ title: "Status updated" });
+        toast({ title: "Status prospek diperbarui." });
         queryClient.invalidateQueries({ queryKey: getGetProspectQueryKey(prospectId) });
       }
     });
@@ -92,7 +92,7 @@ export function ProspectDetail() {
   const handleAddActivity = () => {
     createActivity.mutate({ id: prospectId, data: { type: newActivityType, notes: newActivityNote } }, {
       onSuccess: () => {
-        toast({ title: "Activity added" });
+        toast({ title: "Aktivitas berhasil dicatat." });
         setNewActivityNote("");
         queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey(prospectId) });
       }
@@ -104,34 +104,36 @@ export function ProspectDetail() {
   }
 
   if (!prospect) {
-    return <div>Prospect not found</div>;
+    return <div className="ws-card p-6 text-sm text-muted-foreground">Prospek tidak ditemukan.</div>;
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center gap-4">
+    <div className="flex min-w-0 flex-col gap-6 sm:gap-7">
+      <div className="flex min-w-0 items-start gap-3">
         <Link href="/prospects">
-          <Button variant="outline" size="icon"><ArrowLeft className="h-4 w-4"/></Button>
+          <Button variant="outline" size="icon" className="mt-1 h-9 w-9 rounded-lg"><ArrowLeft className="h-4 w-4"/><span className="sr-only">Kembali ke prospek</span></Button>
         </Link>
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">{prospect.businessName}</h1>
-          <div className="flex items-center gap-2 mt-1">
+        <div className="min-w-0 flex-1">
+          <p className="ws-eyebrow">Detail prospek</p>
+          <h1 className="mt-1 break-words text-[1.65rem] font-semibold tracking-tight sm:text-3xl">{prospect.businessName}</h1>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <Badge variant="secondary">{prospect.category}</Badge>
-            <span className="text-sm text-muted-foreground capitalize">Source: {prospect.source}</span>
+            <span className="text-xs text-muted-foreground">Sumber: {prospect.source === "gmaps" ? "Google Maps" : prospect.source === "manual" ? "Manual" : prospect.source}</span>
+            <Badge variant="outline">{prospect.hasWebsite ? "Sudah ada website" : "Belum ada website"}</Badge>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-2 space-y-6">
-          <Card>
+      <div className="grid min-w-0 grid-cols-1 gap-5 xl:grid-cols-3">
+        <div className="min-w-0 space-y-5 xl:col-span-2">
+          <Card className="ws-card min-w-0">
             <CardHeader className="pb-4">
-              <div className="flex justify-between items-center">
-                <CardTitle>Business Details</CardTitle>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">Pipeline Stage:</span>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <CardTitle className="ws-section-title">Informasi bisnis</CardTitle>
+                <div className="flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+                  <span className="text-xs font-medium text-muted-foreground">Tahap pipeline</span>
                   <Select value={prospect.status} onValueChange={handleStatusChange} disabled={updateStatus.isPending}>
-                    <SelectTrigger className="w-[180px]">
+                    <SelectTrigger className="h-10 w-full rounded-lg sm:w-[190px]">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -144,44 +146,44 @@ export function ProspectDetail() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3"/> Phone (WA)</p>
+                  <p className="text-sm text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3"/> Nomor WhatsApp</p>
                   <p className="font-medium">{formatPhoneDisplay(prospect.phone)}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground flex items-center gap-1"><User className="h-3 w-3"/> Owner Name</p>
+                  <p className="text-sm text-muted-foreground flex items-center gap-1"><User className="h-3 w-3"/> Pemilik / PIC</p>
                   <p className="font-medium">{prospect.ownerName || "-"}</p>
                 </div>
-                <div className="space-y-1 col-span-2">
-                  <p className="text-sm text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3"/> Address</p>
-                  <p className="font-medium">{prospect.address || "-"}</p>
+                <div className="space-y-1 sm:col-span-2">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3.5 w-3.5"/> Alamat</p>
+                  <p className="break-words font-medium">{prospect.address || "-"}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground flex items-center gap-1"><Globe className="h-3 w-3"/> Website Status</p>
-                  <p className="font-medium">{prospect.hasWebsite ? "Has Website" : "No Website"}</p>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1"><Globe className="h-3.5 w-3.5"/> Status website</p>
+                  {prospect.currentWebsite ? <a href={prospect.currentWebsite} target="_blank" rel="noreferrer" className="break-all text-sm font-medium text-primary hover:underline">{prospect.currentWebsite}</a> : <p className="text-sm font-medium">{prospect.hasWebsite ? "Sudah ada website" : "Belum ada website"}</p>}
                 </div>
                 <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground flex items-center gap-1"><FileText className="h-3 w-3"/> Deal Value</p>
+                  <p className="text-sm text-muted-foreground flex items-center gap-1"><FileText className="h-3 w-3"/> Nilai deal</p>
                   <p className="font-medium">{prospect.dealValue ? `Rp ${prospect.dealValue.toLocaleString('id-ID')}` : "-"}</p>
                 </div>
               </div>
               {prospect.notes && (
                 <div className="mt-4 pt-4 border-t">
-                  <p className="text-sm font-medium mb-1">Notes</p>
+                  <p className="text-sm font-medium mb-1">Catatan</p>
                   <p className="text-sm text-muted-foreground">{prospect.notes}</p>
                 </div>
               )}
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="ws-card min-w-0">
             <CardHeader>
-              <CardTitle>Outreach</CardTitle>
+              <CardTitle className="ws-section-title">Aksi komunikasi</CardTitle>
             </CardHeader>
             <CardContent>
               <Tabs defaultValue="wa">
-                <TabsList className="mb-4">
+                <TabsList className="mb-4 h-auto w-full justify-start gap-1 overflow-x-auto rounded-lg bg-muted/70 p-1 sm:w-auto">
                   <TabsTrigger value="wa" className="gap-1.5">
                     <MessageSquare className="h-3.5 w-3.5" />
                     Kirim WA
@@ -195,10 +197,10 @@ export function ProspectDetail() {
                 <TabsContent value="wa">
                   <div className="flex gap-4 items-end">
                     <div className="flex-1 space-y-2">
-                      <label className="text-sm font-medium">Select WA Template</label>
+                      <label className="text-sm font-medium">Pilih template WhatsApp</label>
                       <Select value={selectedTemplate?.toString()} onValueChange={(v) => setSelectedTemplate(parseInt(v, 10))}>
                         <SelectTrigger>
-                          <SelectValue placeholder="Choose a template..." />
+                          <SelectValue placeholder="Pilih template pesan" />
                         </SelectTrigger>
                         <SelectContent>
                           {templates?.map(t => (
@@ -231,10 +233,10 @@ export function ProspectDetail() {
           </Card>
         </div>
 
-        <div className="space-y-6">
-          <Card className="h-full flex flex-col">
+        <div className="min-w-0 space-y-5">
+          <Card className="ws-card flex h-full min-w-0 flex-col">
             <CardHeader className="pb-2">
-              <CardTitle>Activity Log</CardTitle>
+              <CardTitle>Riwayat aktivitas</CardTitle>
             </CardHeader>
             <CardContent className="flex-1 flex flex-col gap-4">
               <div className="space-y-2 border rounded-md p-3 bg-muted/30">
@@ -244,23 +246,23 @@ export function ProspectDetail() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="call">Call</SelectItem>
-                      <SelectItem value="wa_sent">WA Sent</SelectItem>
+                      <SelectItem value="call">Telepon</SelectItem>
+                      <SelectItem value="wa_sent">WhatsApp terkirim</SelectItem>
                       <SelectItem value="demo">Demo</SelectItem>
-                      <SelectItem value="follow_up">Follow Up</SelectItem>
+                      <SelectItem value="follow_up">Tindak lanjut</SelectItem>
                       <SelectItem value="proposal">Proposal</SelectItem>
-                      <SelectItem value="deal_closed">Deal Closed</SelectItem>
+                      <SelectItem value="deal_closed">Deal ditutup</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <Textarea 
-                  placeholder="Notes..." 
+                  placeholder="Catatan aktivitas…"
                   className="min-h-[80px]" 
                   value={newActivityNote}
                   onChange={(e) => setNewActivityNote(e.target.value)}
                 />
                 <Button size="sm" className="w-full" onClick={handleAddActivity} disabled={createActivity.isPending}>
-                  Log Activity
+                  Catat aktivitas
                 </Button>
               </div>
 
@@ -268,7 +270,7 @@ export function ProspectDetail() {
                 {isActivitiesLoading ? (
                   <Skeleton className="h-16 w-full" />
                 ) : activities?.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">No activity logged.</p>
+                  <p className="text-sm text-muted-foreground text-center py-4">Belum ada aktivitas.</p>
                 ) : (
                   activities?.map((activity) => (
                     <div key={activity.id} className="relative pl-4 border-l-2 border-primary/20 pb-4 last:pb-0">
@@ -277,7 +279,7 @@ export function ProspectDetail() {
                         {activity.type.replace('_', ' ')}
                         <span className="text-[10px] text-muted-foreground font-normal flex items-center gap-1">
                           <Clock className="h-3 w-3"/>
-                          {new Date(activity.createdAt).toLocaleDateString()}
+                          {new Date(activity.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
                         </span>
                       </div>
                       {activity.notes && (

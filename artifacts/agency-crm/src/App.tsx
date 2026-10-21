@@ -19,6 +19,7 @@ const Invoices = lazy(() => import("@/pages/Invoices").then((module) => ({ defau
 const Packages = lazy(() => import("@/pages/Packages").then((module) => ({ default: module.Packages })));
 const Settings = lazy(() => import("@/pages/Settings").then((module) => ({ default: module.Settings })));
 const Prospecting = lazy(() => import("@/pages/Prospecting").then((module) => ({ default: module.Prospecting })));
+const LandingPageGenerator = lazy(() => import("@/pages/LandingPageGenerator").then((module) => ({ default: module.LandingPageGenerator })));
 const NotFound = lazy(() => import("@/pages/not-found"));
 
 function RouteLoading() {
@@ -43,6 +44,7 @@ function Router() {
           </Route>
           <Route path="/panduan" component={Panduan} />
           <Route path="/prospecting" component={Prospecting} />
+          <Route path="/landing-page-generator" component={LandingPageGenerator} />
           <Route path="/prospects" component={Prospects} />
           <Route path="/prospects/:id" component={ProspectDetail} />
           <Route path="/pipeline" component={Pipeline} />

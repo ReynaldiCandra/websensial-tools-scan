@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -131,24 +132,31 @@ export function Dashboard() {
   const retryActivities = () => void queryClient.invalidateQueries({ queryKey: getGetDashboardRecentActivityQueryKey() });
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">Ringkasan pipeline prospek dan aktivitas terbaru Anda.</p>
+    <div className="flex flex-col gap-6 sm:gap-7">
+      <div className="ws-page-heading">
+        <div>
+          <p className="ws-eyebrow">Ringkasan workspace</p>
+          <h1>Dashboard</h1>
+          <p>Pantau prospek, aktivitas penjualan, dan performa tim Anda dalam satu tempat.</p>
+        </div>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          <Button asChild className="h-10 gap-2 rounded-lg px-4"><Link href="/prospecting"><Users className="h-4 w-4" />Cari Prospek</Link></Button>
+          <Button asChild variant="outline" className="h-10 gap-2 rounded-lg px-4"><Link href="/pipeline"><Target className="h-4 w-4" />Lihat Pipeline</Link></Button>
+        </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         {statCards.map((stat) => {
           const Icon = stat.icon;
           return (
-            <Card key={stat.key}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">{stat.label}</CardTitle>
-                <div className={`flex h-9 w-9 items-center justify-center rounded-full ${stat.color}`}>
+            <Card key={stat.key} className="ws-card min-w-0">
+              <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0 pb-1 sm:px-5 sm:pt-5">
+                <CardTitle className="pt-1 text-xs font-medium leading-4 text-muted-foreground sm:text-[13px]">{stat.label}</CardTitle>
+                <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${stat.color}`}>
                   <Icon className="h-4 w-4" />
                 </div>
               </CardHeader>
-              <CardContent>
+              <CardContent className="sm:px-5 sm:pb-5">
                 {isLoadingSummary ? (
                   <Skeleton className="h-8 w-24" />
                 ) : isSummaryError || !summary ? (
@@ -158,8 +166,8 @@ export function Dashboard() {
                   </div>
                 ) : (
                   <>
-                    <div className="text-2xl font-bold">{stat.format(summary)}</div>
-                    <p className="text-xs text-muted-foreground mt-1">{stat.sub(summary)}</p>
+                    <div className="break-words text-xl font-semibold tracking-tight sm:text-[26px]">{stat.format(summary)}</div>
+                    <p className="mt-1 text-[11px] leading-4 text-muted-foreground sm:text-xs">{stat.sub(summary)}</p>
                   </>
                 )}
               </CardContent>
@@ -168,12 +176,13 @@ export function Dashboard() {
         })}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-        <Card className="col-span-4">
-          <CardHeader>
-            <CardTitle>Ringkasan Pipeline</CardTitle>
+      <div className="grid min-w-0 gap-4 xl:grid-cols-7">
+        <Card className="ws-card min-w-0 xl:col-span-4">
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <div><CardTitle className="ws-section-title">Ringkasan Pipeline</CardTitle><p className="mt-1 text-xs text-muted-foreground">Prospek berdasarkan tahapan penjualan</p></div>
+            <Button asChild variant="ghost" size="sm" className="h-8 gap-1 px-2 text-xs"><Link href="/pipeline">Lihat detail <Target className="h-3.5 w-3.5" /></Link></Button>
           </CardHeader>
-          <CardContent>
+          <CardContent className="min-w-0 overflow-hidden">
             {isLoadingPipeline ? (
               <Skeleton className="h-[240px] w-full" />
             ) : isPipelineError || !pipeline ? (
@@ -186,9 +195,10 @@ export function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card className="col-span-3">
-          <CardHeader>
-            <CardTitle>Aktivitas Terbaru</CardTitle>
+        <Card className="ws-card min-w-0 xl:col-span-3">
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <div><CardTitle className="ws-section-title">Aktivitas Terbaru</CardTitle><p className="mt-1 text-xs text-muted-foreground">Interaksi terakhir dengan prospek</p></div>
+            <Activity className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             {isLoadingActivities ? (
@@ -200,15 +210,17 @@ export function Dashboard() {
             ) : isActivitiesError || !activities ? (
               <QueryError onRetry={retryActivities} />
             ) : activities.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                Belum ada aktivitas. Saatnya beraksi!
+              <div className="flex min-h-44 flex-col items-center justify-center py-8 text-center">
+                <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground"><Activity className="h-5 w-5" /></span>
+                <p className="text-sm font-medium text-foreground">Belum ada aktivitas.</p>
+                <p className="mt-1 max-w-[220px] text-xs leading-5 text-muted-foreground">Aktivitas prospek akan tampil di sini setelah Anda mulai menghubungi mereka.</p>
               </div>
             ) : (
               <div className="space-y-4">
                 {activities.slice(0, 5).map((activity: ActivityWithProspect) => {
                   const { Icon, color } = activityIconFor(activity.type);
                   return (
-                    <div key={activity.id} className="flex items-start gap-3">
+                    <div key={activity.id} className="flex items-start gap-3 border-b border-border/70 pb-4 last:border-0 last:pb-0">
                       <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${color}`}>
                         <Icon className="h-4 w-4" />
                       </div>
@@ -217,7 +229,7 @@ export function Dashboard() {
                           {activity.prospectName || activity.businessName}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {activity.type.replace('_', ' ').toUpperCase()} • {formatActivityDate(activity.createdAt)}
+                          {activity.type.replace('_', ' ').toUpperCase()} · {formatActivityDate(activity.createdAt)}
                         </p>
                         {activity.notes && (
                           <p className="text-xs mt-1 text-muted-foreground/80 line-clamp-2">{activity.notes}</p>

@@ -4,7 +4,8 @@ import { eq } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { z } from "zod";
 import { toWaNumber } from "../lib/phone";
-import { renderFashionCatalogHTML, renderPremiumProfileHTML, type PreviewPageData, type PreviewTemplateStyle } from "../lib/preview-html";
+import { getCloudinaryConfig, signCloudinaryParams } from "../lib/cloudinary-upload";
+import { renderConstructionProfileHTML, renderFashionCatalogHTML, renderIndustryLandingHTML, renderPremiumProfileHTML, type PreviewPageData, type PreviewTemplateStyle } from "../lib/preview-html";
 
 const router = Router();
 /** Public prospect demo link. Must be answerable without auth. */
@@ -44,6 +45,10 @@ const TEMPLATE_STYLES = [
   "creative-agency",
   "wellness-health",
   "conversion-landing",
+  "hotel-property",
+  "tour-travel",
+  "online-course",
+  "restaurant",
 ] as const satisfies readonly PreviewTemplateStyle[];
 
 const CreatePreviewBody = z.object({
@@ -54,6 +59,9 @@ const CreatePreviewBody = z.object({
   templateStyle: z.enum(TEMPLATE_STYLES).optional(),
   services: z.string().optional(),
   aboutText: z.string().optional(),
+  logoUrl: z.string().url().optional().nullable(),
+  heroImageUrl: z.string().url().optional().nullable(),
+  galleryImageUrls: z.array(z.string().url()).max(3).optional(),
 });
 
 const COLOR_SCHEMES: Record<string, { primary: string; bg: string; accent: string; text: string; light: string }> = {
@@ -110,12 +118,17 @@ function getDefaultTagline(category: string, businessName: string): string {
     "Salon & Kecantikan": `Tampil Cantik & Percaya Diri Setiap Hari`,
     "Otomotif": `Perawatan Kendaraan Terpercaya & Profesional`,
     "Fashion": `Koleksi Terbaik untuk Penampilan Anda`,
+    "Konstruksi & Renovasi": `Ruang Terencana, Kualitas yang Bertahan`,
     "Kesehatan": `Kesehatan Anda, Prioritas Kami`,
     "Apotek": `Obat Lengkap, Pelayanan Cepat & Terpercaya`,
     "Fotografi": `Mengabadikan Setiap Momen Berharga Anda`,
     "Laundry": `Bersih, Rapi, dan Wangi — Siap Tepat Waktu`,
     "Catering": `Hidangan Lezat untuk Setiap Acara Spesial`,
-    "Hotel & Penginapan": `Kenyamanan & Kehangatan di Setiap Malam`,
+    "Restoran": `Tempat Bertemu, Rasa untuk Dikenang`,
+    "Hotel & Penginapan": `Temukan Ruang untuk Beristirahat dan Menjelajah`,
+    "Hotel / Property": `Temukan Ruang untuk Beristirahat dan Menjelajah`,
+    "Tour & Travel": `Awali Perjalanan dengan Rencana yang Tepat`,
+    "Online Course": `Belajar Hal Baru, Satu Langkah Sekaligus`,
     "Pendidikan": `Mendidik untuk Masa Depan yang Lebih Cerah`,
   };
   return map[category] ?? `Layanan Terbaik dari ${businessName}`;
@@ -127,6 +140,11 @@ function getDefaultServices(category: string): string {
     "Salon & Kecantikan": "Potong Rambut,Creambath,Facial,Nail Art,Make Up",
     "Otomotif": "Servis Rutin,Ganti Oli,Perbaikan Mesin,Cuci Motor/Mobil",
     "Fashion": "Baju Pria,Baju Wanita,Aksesoris,Custom Order",
+    "Konstruksi & Renovasi": "Konstruksi Bangunan,Renovasi Hunian,Desain Interior,Konsultasi Proyek",
+    "Hotel / Property": "Kamar dan Suite,Fasilitas Properti,Galeri Properti,Reservasi dan Informasi",
+    "Tour & Travel": "Paket Perjalanan,Itinerary,Transportasi,Konsultasi Perjalanan",
+    "Online Course": "Program Belajar,Kurikulum dan Silabus,Jadwal Kelas,Konsultasi Pendaftaran",
+    "Restoran": "Menu Unggulan,Jam Operasional,Reservasi Meja,Informasi Lokasi",
     "Kesehatan": "Konsultasi Dokter,Pemeriksaan Umum,Laboratorium,Imunisasi",
     "Laundry": "Cuci Kiloan,Cuci Satuan,Express 3 Jam,Antar Jemput",
     "Catering": "Katering Pernikahan,Katering Kantoran,Nasi Kotak,Prasmanan",
@@ -136,15 +154,31 @@ function getDefaultServices(category: string): string {
 }
 
 function getDefaultAbout(businessName: string, category: string): string {
+  if (category === "Konstruksi & Renovasi") {
+    return `Konsep profil ${businessName} untuk menampilkan layanan konstruksi, renovasi, dan desain. Lengkapi dengan profil, pengalaman, dan detail proyek aktual sebelum dipublikasikan.`;
+  }
+  const demoCopy: Record<string, string> = {
+    "Hotel / Property": `Konsep halaman ${businessName} untuk menampilkan akomodasi, fasilitas, dan informasi properti. Ganti konten demo dengan detail aktual sebelum dipublikasikan.`,
+    "Tour & Travel": `Konsep halaman ${businessName} untuk menampilkan inspirasi destinasi dan layanan perjalanan. Verifikasi paket, itinerary, dan informasi sebelum dipublikasikan.`,
+    "Online Course": `Konsep halaman ${businessName} untuk memperkenalkan program dan informasi kelas. Lengkapi silabus, jadwal, biaya, serta klaim yang aktual.`,
+    "Restoran": `Konsep halaman ${businessName} untuk memperkenalkan suasana dan menu restoran. Perbarui menu, alergen, jam buka, dan lokasi dengan informasi aktual.`,
+  };
+  if (demoCopy[category]) return demoCopy[category];
   return `${businessName} adalah usaha ${category.toLowerCase()} yang telah melayani pelanggan dengan dedikasi penuh. Kami berkomitmen memberikan pelayanan terbaik dengan kualitas yang tidak mengecewakan. Kepuasan pelanggan adalah prioritas utama kami.`;
 }
 
 
 export function generatePreviewHTML(
-  data: PreviewPageData & { templateStyle?: PreviewTemplateStyle },
+  data: PreviewPageData & { pageCategory?: string; templateStyle?: PreviewTemplateStyle },
 ): string {
   if (data.templateStyle === "fashion-catalog") {
     return renderFashionCatalogHTML(data);
+  }
+  if ((data.pageCategory ?? data.category) === "Konstruksi & Renovasi" && data.templateStyle === "company-modern") {
+    return renderConstructionProfileHTML(data);
+  }
+  if (["hotel-property", "tour-travel", "online-course", "restaurant"].includes(data.templateStyle ?? "")) {
+    return renderIndustryLandingHTML(data, data.templateStyle as "hotel-property" | "tour-travel" | "online-course" | "restaurant");
   }
   if (
     data.templateStyle === "company-modern" ||
@@ -401,6 +435,33 @@ function generateClassicPreviewHTML(data: PreviewPageData): string {
 </html>`;
 }
 
+function defaultTemplateForCategory(pageCategory: string): PreviewTemplateStyle {
+  if (pageCategory === "Fashion" || pageCategory === "Fashion & Luxury") return "fashion-catalog";
+  if (pageCategory === "Hotel / Property") return "hotel-property";
+  if (pageCategory === "Tour & Travel") return "tour-travel";
+  if (pageCategory === "Online Course") return "online-course";
+  if (pageCategory === "Restoran") return "restaurant";
+  if (pageCategory === "Corporate, Hukum, & Keuangan") return "corporate-finance";
+  if (pageCategory === "Teknologi & SaaS") return "technology-saas";
+  if (pageCategory === "Portofolio Kreatif & Agensi") return "creative-agency";
+  if (pageCategory === "Wellness, Skincare, & Kesehatan") return "wellness-health";
+  if (pageCategory.startsWith("Landing Page High Konversi")) return "conversion-landing";
+  return "company-modern";
+}
+
+// POST /api/previews/upload-signature — issue signed upload parameters; secret stays server-side.
+router.post("/previews/upload-signature", (req, res) => {
+  const parsed = z.object({ prospectId: z.number().int().positive(), assetType: z.enum(["logo", "hero", "gallery"]) }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+  const config = getCloudinaryConfig();
+  if (!config) return res.status(503).json({ error: "Upload belum dikonfigurasi. Atur CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, dan CLOUDINARY_API_SECRET pada server." });
+  const timestamp = Math.floor(Date.now() / 1000);
+  const folder = `websensial/previews/${parsed.data.prospectId}`;
+  const publicId = `${parsed.data.assetType}-${randomBytes(8).toString("hex")}`;
+  const signedParams = { allowed_formats: "jpg,png,webp,avif", folder, overwrite: "false", public_id: publicId, timestamp };
+  return res.json({ cloudName: config.cloudName, apiKey: config.apiKey, timestamp, folder, publicId, signature: signCloudinaryParams(signedParams, config.apiSecret), allowedFormats: ["jpg", "png", "webp", "avif"], maxFileBytes: 10 * 1024 * 1024 });
+});
+
 // POST /api/previews — create a preview
 router.post("/previews", async (req, res) => {
   try {
@@ -414,27 +475,16 @@ router.post("/previews", async (req, res) => {
     const token = randomBytes(12).toString("hex");
 
     const pageCategory = parsed.data.pageCategory ?? prospect.category;
+    const selectedStyle = parsed.data.templateStyle ?? defaultTemplateForCategory(pageCategory);
     const finalTagline = tagline || getDefaultTagline(pageCategory, prospect.businessName);
     const finalServices = services || getDefaultServices(pageCategory);
     const finalAbout = aboutText || getDefaultAbout(prospect.businessName, pageCategory);
     const finalColor = colorScheme || "indigo";
-    const templateStyle = parsed.data.templateStyle ?? (
-      pageCategory === "Fashion" || pageCategory === "Fashion & Luxury"
-        ? "fashion-catalog"
-        : pageCategory === "Company Profile"
-        ? "company-modern"
-        : pageCategory === "Corporate, Hukum, & Keuangan"
-          ? "corporate-finance"
-          : pageCategory === "Teknologi & SaaS"
-            ? "technology-saas"
-            : pageCategory === "Portofolio Kreatif & Agensi"
-              ? "creative-agency"
-              : pageCategory === "Wellness, Skincare, & Kesehatan"
-                ? "wellness-health"
-                : pageCategory.startsWith("Landing Page High Konversi")
-                  ? "conversion-landing"
-                  : "company-modern"
-    );
+    const mediaUrls = [parsed.data.logoUrl, parsed.data.heroImageUrl, ...(parsed.data.galleryImageUrls ?? [])].filter((url): url is string => Boolean(url));
+    if (mediaUrls.some((value) => { try { const url = new URL(value); return url.protocol !== "https:" || url.hostname !== "res.cloudinary.com" || Boolean(url.username || url.password); } catch { return true; } })) {
+      return res.status(400).json({ error: "Media URL tidak valid; gunakan aset Cloudinary yang diunggah melalui generator." });
+    }
+    const templateStyle = selectedStyle;
 
     const [row] = await db
       .insert(previewsTable)
@@ -452,6 +502,9 @@ router.post("/previews", async (req, res) => {
         templateStyle,
         services: finalServices,
         aboutText: finalAbout,
+        logoUrl: parsed.data.logoUrl ?? null,
+        heroImageUrl: parsed.data.heroImageUrl ?? null,
+        galleryImageUrls: JSON.stringify(parsed.data.galleryImageUrls ?? []),
       })
       .returning();
 
@@ -524,12 +577,16 @@ publicPreviewsRouter.get("/preview/:token", async (req, res) => {
     const html = generatePreviewHTML({
       businessName: row.businessName,
       ownerName: row.ownerName,
-      category: row.pageCategory,
+      category: row.category,
+      pageCategory: row.pageCategory,
       phone: row.phone,
       address: row.address,
       tagline: row.tagline ?? getDefaultTagline(row.pageCategory, row.businessName),
       services,
       aboutText: row.aboutText ?? getDefaultAbout(row.businessName, row.pageCategory),
+      logoUrl: row.logoUrl,
+      heroImageUrl: row.heroImageUrl,
+      galleryImageUrls: JSON.parse(row.galleryImageUrls ?? "[]") as string[],
       colorScheme: row.colorScheme,
       templateStyle: row.templateStyle as PreviewTemplateStyle,
     });
@@ -540,8 +597,8 @@ publicPreviewsRouter.get("/preview/:token", async (req, res) => {
     // cannot execute JavaScript here.
     res.setHeader(
       "Content-Security-Policy",
-      row.templateStyle === "fashion-catalog"
-        ? "default-src 'none'; style-src 'unsafe-inline'; img-src https://images.unsplash.com data:; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+      ["fashion-catalog", "hotel-property", "tour-travel", "online-course", "restaurant"].includes(row.templateStyle) || (row.pageCategory === "Konstruksi & Renovasi" && row.templateStyle === "company-modern")
+        ? "default-src 'none'; style-src 'unsafe-inline'; img-src https://images.unsplash.com https://res.cloudinary.com data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
         : "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
     );
     return res.send(html);

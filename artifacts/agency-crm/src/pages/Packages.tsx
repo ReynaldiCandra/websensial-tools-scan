@@ -114,7 +114,7 @@ export function Packages() {
       <div className="flex justify-between items-start sm:items-center">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Service Packages</h1>
-          <p className="text-muted-foreground mt-1">Manage your standard offerings and pricing.</p>
+          <p className="text-muted-foreground mt-1">Kelola paket layanan dan harga standar agensi Anda.</p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={(open) => {
           if (!open) handleCloseDialog();
@@ -137,7 +137,7 @@ export function Packages() {
                   name="name"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Package Name</FormLabel>
+                      <FormLabel>Nama paket</FormLabel>
                       <FormControl>
                         <Input placeholder="e.g., Basic Website" {...field} />
                       </FormControl>
@@ -214,7 +214,7 @@ export function Packages() {
                 </div>
 
                 <div className="flex justify-end gap-2 pt-4">
-                  <Button type="button" variant="outline" onClick={handleCloseDialog}>Cancel</Button>
+                  <Button type="button" variant="outline" onClick={handleCloseDialog}>Batal</Button>
                   <Button type="submit" disabled={createPackage.isPending || updatePackage.isPending}>
                     {createPackage.isPending || updatePackage.isPending ? "Saving..." : "Save Package"}
                   </Button>

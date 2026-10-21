@@ -107,7 +107,7 @@ export function Templates() {
       <div className="flex justify-between items-start sm:items-center">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">WA Templates</h1>
-          <p className="text-muted-foreground mt-1">Manage your WhatsApp outreach messages.</p>
+          <p className="text-muted-foreground mt-1">Kelola pesan WhatsApp untuk menghubungi dan menindaklanjuti prospek.</p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={(open) => {
           if (!open) handleCloseDialog();
@@ -130,7 +130,7 @@ export function Templates() {
                   name="name"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Template Name</FormLabel>
+                      <FormLabel>Nama template</FormLabel>
                       <FormControl>
                         <Input placeholder="e.g., Cold Outreach v1" {...field} />
                       </FormControl>
@@ -143,7 +143,7 @@ export function Templates() {
                   name="type"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Template Type</FormLabel>
+                      <FormLabel>Jenis template</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>
@@ -181,7 +181,7 @@ export function Templates() {
                   )}
                 />
                 <div className="flex justify-end gap-2 pt-4">
-                  <Button type="button" variant="outline" onClick={handleCloseDialog}>Cancel</Button>
+                  <Button type="button" variant="outline" onClick={handleCloseDialog}>Batal</Button>
                   <Button type="submit" disabled={createTemplate.isPending || updateTemplate.isPending}>
                     {createTemplate.isPending || updateTemplate.isPending ? "Saving..." : "Save Template"}
                   </Button>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ExternalLink, Loader2, Wand2, Copy, CheckCheck, Eye } from "lucide-react";
+import { ExternalLink, Loader2, Wand2, Copy, CheckCheck, Eye, Sparkles, Layers3, Palette, ArrowRight, Clock3, MessageSquare, ImagePlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,18 +22,27 @@ interface Props {
   phone: string;
 }
 
+type AssetType = "logo" | "hero" | "gallery";
+type UploadedAssets = { logo: string; hero: string; gallery: string[] };
+
 interface PreviewRecord {
   id: number;
   token: string;
   previewUrl: string;
   colorScheme: string;
   templateStyle?: string;
+  pageCategory?: string;
   viewCount: number;
   createdAt: string;
 }
 
 const CATEGORY_OPTIONS = [
   "Company Profile",
+  "Konstruksi & Renovasi",
+  "Hotel / Property",
+  "Tour & Travel",
+  "Online Course",
+  "Restoran",
   "Fashion",
   "Fashion & Luxury",
   "Corporate, Hukum, & Keuangan",
@@ -62,8 +71,12 @@ const CATEGORY_OPTIONS = [
 ];
 
 const TEMPLATE_OPTIONS = [
-  { value: "fashion-catalog", label: "Fashion Catalog", description: "Kartu produk, diskon, harga, dan WhatsApp" },
-  { value: "company-modern", label: "Company Profile Modern", description: "Company profile premium serbaguna" },
+  { value: "fashion-catalog", label: "Fashion Editorial", description: "Landing page editorial dengan kategori dan katalog demo" },
+  { value: "hotel-property", label: "Hotel & Property", description: "Landing page hospitality, properti, fasilitas, dan galeri inspirasi" },
+  { value: "tour-travel", label: "Tour & Travel", description: "Landing page destinasi dan inspirasi perjalanan" },
+  { value: "online-course", label: "Online Course", description: "Landing page program belajar, silabus, dan pendaftaran" },
+  { value: "restaurant", label: "Restoran", description: "Landing page suasana, menu inspirasi, dan reservasi" },
+  { value: "company-modern", label: "Company Profile Modern", description: "Landing page perusahaan; pilih Konstruksi & Renovasi untuk template konstruksi" },
   { value: "company-elegant", label: "Company Profile Elegant", description: "Tipografi editorial dan layout berkelas" },
   { value: "company-minimal", label: "Company Profile Minimal", description: "Layout bersih, fokus pada layanan" },
   { value: "corporate-finance", label: "Corporate, Hukum & Keuangan", description: "Tampilan tepercaya dan formal" },
@@ -76,6 +89,11 @@ const TEMPLATE_OPTIONS = [
 
 const PALETTE_GROUPS: Record<string, string[]> = {
   "Company Profile": ["ivory", "beige", "taupe", "brown", "black"],
+  "Konstruksi & Renovasi": ["navy", "charcoal", "slate", "ivory", "beige"],
+  "Hotel / Property": ["navy", "ivory", "beige", "taupe", "charcoal"],
+  "Tour & Travel": ["soft-blue", "navy", "sage-green", "ivory", "charcoal"],
+  "Online Course": ["indigo", "navy", "soft-blue", "charcoal", "white"],
+  "Restoran": ["brown", "ivory", "sage-green", "charcoal", "beige"],
   "Fashion": ["ivory", "beige", "taupe", "brown", "black"],
   "Fashion & Luxury": ["ivory", "beige", "taupe", "brown", "black"],
   "Corporate, Hukum, & Keuangan": ["white", "ivory", "navy", "charcoal", "black"],
@@ -116,6 +134,11 @@ function colorsForCategory(pageCategory: string) {
 
 const defaultTemplateFor = (pageCategory: string) => {
   if (pageCategory === "Fashion" || pageCategory === "Fashion & Luxury") return "fashion-catalog";
+  if (pageCategory === "Konstruksi & Renovasi") return "company-modern";
+  if (pageCategory === "Hotel / Property") return "hotel-property";
+  if (pageCategory === "Tour & Travel") return "tour-travel";
+  if (pageCategory === "Online Course") return "online-course";
+  if (pageCategory === "Restoran") return "restaurant";
   if (pageCategory === "Corporate, Hukum, & Keuangan") return "corporate-finance";
   if (pageCategory === "Teknologi & SaaS") return "technology-saas";
   if (pageCategory === "Portofolio Kreatif & Agensi") return "creative-agency";
@@ -129,13 +152,17 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
   const [tagline, setTagline] = useState("");
   const [services, setServices] = useState("");
   const [aboutText, setAboutText] = useState("");
+  const [assets, setAssets] = useState<UploadedAssets>({ logo: "", hero: "", gallery: [] });
+  const [uploading, setUploading] = useState<AssetType | null>(null);
   const [pageCategory, setPageCategory] = useState(
     CATEGORY_OPTIONS.includes(category) ? category : "Company Profile",
   );
-  const [colorScheme, setColorScheme] = useState(() =>
-    colorsForCategory(CATEGORY_OPTIONS.includes(category) ? category : "Company Profile")[0]?.value ?? "indigo",
-  );
+  const [colorScheme, setColorScheme] = useState(() => {
+    const firstRecommended = colorsForCategory(CATEGORY_OPTIONS.includes(category) ? category : "Company Profile")[0]?.value ?? "indigo";
+    return COLOR_OPTIONS.some((option) => option.value === firstRecommended) ? firstRecommended : "ivory";
+  });
   const [templateStyle, setTemplateStyle] = useState(() => defaultTemplateFor(category));
+  const supportsBusinessAssets = templateStyle === "fashion-catalog" || templateStyle === "hotel-property" || templateStyle === "tour-travel" || templateStyle === "online-course" || templateStyle === "restaurant" || (pageCategory === "Konstruksi & Renovasi" && templateStyle === "company-modern");
   const [generating, setGenerating] = useState(false);
   const [previews, setPreviews] = useState<PreviewRecord[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -172,6 +199,9 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
           aboutText: aboutText || undefined,
           pageCategory,
           templateStyle,
+          logoUrl: assets.logo || undefined,
+          heroImageUrl: assets.hero || undefined,
+          galleryImageUrls: assets.gallery,
         }),
       });
       const data = await res.json();
@@ -185,12 +215,33 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
     }
   };
 
+  const uploadAsset = async (file: File, assetType: AssetType) => {
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/avif"];
+    if (!allowed.includes(file.type) || file.size > 10 * 1024 * 1024) { toast({ title: "Format atau ukuran file tidak didukung", description: "Gunakan JPG, PNG, WebP, atau AVIF maksimal 10 MB.", variant: "destructive" }); return; }
+    setUploading(assetType);
+    try {
+      const signResponse = await apiFetch("/api/previews/upload-signature", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prospectId, assetType }) });
+      const signed = await signResponse.json();
+      if (!signResponse.ok) throw new Error(signed.error ?? "Gagal menyiapkan upload.");
+      const form = new FormData(); form.append("file", file); form.append("api_key", signed.apiKey); form.append("timestamp", String(signed.timestamp)); form.append("folder", signed.folder); form.append("public_id", signed.publicId); form.append("overwrite", "false"); form.append("allowed_formats", signed.allowedFormats.join(",")); form.append("signature", signed.signature);
+      const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloudName)}/image/upload`, { method: "POST", body: form });
+      const uploaded = await response.json();
+      if (!response.ok || typeof uploaded.secure_url !== "string") throw new Error(uploaded.error?.message ?? "Upload gambar gagal.");
+      setAssets((previous) => assetType === "gallery" ? { ...previous, gallery: [...previous.gallery, uploaded.secure_url].slice(0, 3) } : { ...previous, [assetType]: uploaded.secure_url });
+      toast({ title: "Aset berhasil diunggah", description: "Aset akan disimpan bersama preview berikutnya." });
+    } catch (error) { toast({ title: "Upload aset gagal", description: error instanceof Error ? error.message : "Terjadi kesalahan saat upload.", variant: "destructive" }); }
+    finally { setUploading(null); }
+  };
+
   const copyLink = (token: string) => {
     const url = `${window.location.origin}/preview/${token}`;
-    navigator.clipboard.writeText(url);
-    setCopied(token);
-    setTimeout(() => setCopied(null), 2000);
-    toast({ title: "Link preview disalin!" });
+    void navigator.clipboard.writeText(url).then(() => {
+      setCopied(token);
+      window.setTimeout(() => setCopied(null), 2000);
+      toast({ title: "Link preview disalin!" });
+    }).catch(() => {
+      toast({ title: "Tidak dapat menyalin link", description: "Periksa izin clipboard browser Anda.", variant: "destructive" });
+    });
   };
 
   const openPreview = (token: string) => {
@@ -216,198 +267,102 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
   };
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader className="pb-4">
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Wand2 className="h-4 w-4 text-primary" />
-            Generate Preview Website
-          </CardTitle>
-          <CardDescription className="text-xs">
-            Buat preview website otomatis untuk {businessName} — share link-nya ke owner via WA.
-          </CardDescription>
+    <div className="min-w-0 space-y-5">
+      <Card className="ws-card min-w-0 overflow-hidden">
+        <CardHeader className="border-b border-border/70 bg-gradient-to-r from-primary/[0.055] to-transparent p-4 sm:p-5">
+          <div className="flex items-start gap-3">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Sparkles className="h-5 w-5" /></span>
+            <div className="min-w-0">
+              <p className="ws-eyebrow">Website studio</p>
+              <CardTitle className="mt-1 text-lg font-semibold tracking-tight">Generate Preview Website</CardTitle>
+              <CardDescription className="mt-1 text-xs leading-5">Siapkan konsep satu halaman untuk <strong className="font-medium text-foreground">{businessName}</strong>, lalu bagikan ke calon klien melalui WhatsApp.</CardDescription>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Kategori website</Label>
-              <Select
-                value={pageCategory}
-                onValueChange={(value) => {
+        <CardContent className="space-y-6 p-4 sm:p-5">
+          <section className="space-y-3" aria-labelledby="generator-category-title">
+            <div className="flex items-center gap-2"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">1</span><div><h3 id="generator-category-title" className="text-sm font-semibold">Informasi dasar</h3><p className="text-[11px] text-muted-foreground">Pilih jenis website dan karakter desain.</p></div></div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="min-w-0 space-y-1.5">
+                <Label className="text-xs">Kategori website</Label>
+                <Select value={pageCategory} onValueChange={(value) => {
                   setPageCategory(value);
                   setTemplateStyle(defaultTemplateFor(value));
-                  setColorScheme(colorsForCategory(value)[0]?.value ?? "indigo");
-                }}
-              >
-                <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {CATEGORY_OPTIONS.map((option) => (
-                    <SelectItem key={option} value={option}>{option}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                  const recommended = colorsForCategory(value)[0]?.value ?? "indigo";
+                  setColorScheme(COLOR_OPTIONS.some((option) => option.value === recommended) ? recommended : "ivory");
+                }}>
+                  <SelectTrigger className="h-10 rounded-lg text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>{CATEGORY_OPTIONS.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="min-w-0 space-y-1.5">
+                <Label className="text-xs">Style UI/UX</Label>
+                <Select value={templateStyle} onValueChange={setTemplateStyle}>
+                  <SelectTrigger className="h-10 rounded-lg text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>{TEMPLATE_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}><span className="flex min-w-0 flex-col text-left"><span className="truncate">{option.label}</span><span className="text-xs text-muted-foreground">{option.description}</span></span></SelectItem>)}</SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Style UI/UX</Label>
-              <Select value={templateStyle} onValueChange={setTemplateStyle}>
-                <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {TEMPLATE_OPTIONS.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      <span className="flex flex-col text-left">
-                        <span>{option.label}</span>
-                        <span className="text-xs text-muted-foreground">{option.description}</span>
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="flex items-start gap-2 rounded-lg border border-border/70 bg-muted/30 p-3 text-[11px] leading-5 text-muted-foreground"><Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" /><p>{templateStyle === "fashion-catalog" ? "Landing page editorial fashion; foto dan item katalog adalah contoh demo dan dapat diganti pemilik bisnis." : ["hotel-property", "tour-travel", "online-course", "restaurant"].includes(templateStyle) ? "Landing page khusus industri. Foto showcase dan semua paket, fasilitas, menu, program, jadwal, serta klaim adalah contoh demo—perbarui dengan data dan aset bisnis aktual." : pageCategory === "Konstruksi & Renovasi" && templateStyle === "company-modern" ? "Konsep company profile konstruksi dengan foto arsitektur demo; ganti dengan foto proyek dan informasi aktual sebelum dipresentasikan sebagai hasil klien." : templateStyle === "conversion-landing" ? "Layout ringkas dengan CTA utama untuk trafik iklan Meta dan Google." : "Palet warna disarankan berdasarkan kategori bisnis yang dipilih."}</p></div>
+          </section>
+
+          <section className="space-y-3" aria-labelledby="generator-content-title">
+            <div className="flex items-center gap-2"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">2</span><div><h3 id="generator-content-title" className="text-sm font-semibold">Konten bisnis</h3><p className="text-[11px] text-muted-foreground">Lengkapi informasi opsional untuk memperkaya preview.</p></div></div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5"><Label htmlFor="preview-tagline" className="text-xs">Tagline <span className="font-normal text-muted-foreground">(opsional)</span></Label><Input id="preview-tagline" placeholder={`Layanan terbaik untuk ${category.toLowerCase()} Anda`} value={tagline} onChange={(event) => setTagline(event.target.value)} className="h-10 rounded-lg text-sm" /></div>
+              <div className="space-y-1.5"><Label htmlFor="preview-services" className="text-xs">Layanan / produk <span className="font-normal text-muted-foreground">(pisahkan dengan koma)</span></Label><Input id="preview-services" placeholder="Konsultasi, produk unggulan…" value={services} onChange={(event) => setServices(event.target.value)} className="h-10 rounded-lg text-sm" /></div>
+              <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="preview-about" className="text-xs">Tentang bisnis <span className="font-normal text-muted-foreground">(opsional)</span></Label><Textarea id="preview-about" placeholder="Ceritakan keunggulan bisnis, target pelanggan, dan hal yang ingin ditampilkan…" value={aboutText} onChange={(event) => setAboutText(event.target.value)} rows={3} className="resize-y rounded-lg text-sm" /></div>
             </div>
-          </div>
-          <p className="text-[11px] text-muted-foreground">
-            {templateStyle === "fashion-catalog"
-              ? "Katalog memakai kartu produk contoh (bukan katalog atau harga asli)."
-              : templateStyle === "conversion-landing"
-                ? "Layout ringkas dengan CTA utama untuk trafik iklan Meta dan Google."
-                : "Palet warna mengikuti karakter kategori bisnis yang dipilih."}
-          </p>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Tagline (opsional)</Label>
-            <Input
-              placeholder={`Layanan terbaik untuk setiap kebutuhan ${category.toLowerCase()} Anda`}
-              value={tagline}
-              onChange={(e) => setTagline(e.target.value)}
-              className="text-sm"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Layanan (pisah dengan koma, opsional)</Label>
-            <Input
-              placeholder="Layanan 1, Layanan 2, Layanan 3"
-              value={services}
-              onChange={(e) => setServices(e.target.value)}
-              className="text-sm"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Tentang bisnis (opsional)</Label>
-            <Textarea
-              placeholder="Deskripsi singkat tentang bisnis..."
-              value={aboutText}
-              onChange={(e) => setAboutText(e.target.value)}
-              rows={2}
-              className="text-sm resize-none"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Warna tema</Label>
+          </section>
+
+          {supportsBusinessAssets && <section className="space-y-3" aria-labelledby="generator-assets-title">
+            <div className="flex items-center gap-2"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">3</span><div><h3 id="generator-assets-title" className="text-sm font-semibold">Personalisasi aset visual</h3><p className="text-[11px] text-muted-foreground">Unggah logo, foto utama, dan maksimal 3 foto galeri. JPG, PNG, WebP, AVIF · maks. 10 MB.</p></div></div>
+            <div className="grid gap-3 sm:grid-cols-3">{([ ["logo", "Logo bisnis", assets.logo], ["hero", "Foto hero", assets.hero], ["gallery", `Foto galeri (${assets.gallery.length}/3)`, ""] ] as const).map(([type, label, current]) => <div key={type} className="space-y-2 rounded-lg border border-border/70 p-3"><div className="flex items-center justify-between gap-2"><span className="text-xs font-medium">{label}</span>{current && <button type="button" className="text-muted-foreground hover:text-destructive" aria-label={`Hapus ${label}`} onClick={() => setAssets((previous) => ({ ...previous, [type]: "" }))}><X className="h-3.5 w-3.5" /></button>}</div>{current ? <img src={current} alt={`Pratinjau ${label}`} className="h-24 w-full rounded-md bg-muted object-contain" /> : <label className="flex h-24 cursor-pointer flex-col items-center justify-center gap-1.5 rounded-md border border-dashed border-border bg-muted/25 text-center text-[10px] text-muted-foreground hover:bg-muted/50"><ImagePlus className="h-4 w-4" />Pilih gambar<input type="file" accept="image/jpeg,image/png,image/webp,image/avif" className="sr-only" disabled={uploading !== null || (type === "gallery" && assets.gallery.length >= 3)} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadAsset(file, type); event.currentTarget.value = ""; }} /></label>}{type === "gallery" && assets.gallery.map((url, index) => <div key={url} className="flex items-center gap-2"><img src={url} alt={`Foto galeri ${index + 1}`} className="h-10 w-10 rounded object-cover" /><button type="button" aria-label={`Hapus foto galeri ${index + 1}`} onClick={() => setAssets((previous) => ({ ...previous, gallery: previous.gallery.filter((_, itemIndex) => itemIndex !== index) }))}><X className="h-3.5 w-3.5" /></button></div>)}{uploading === type && <p className="text-[10px] text-muted-foreground">Mengunggah…</p>}</div>)}</div>
+            <p className="text-[10px] leading-4 text-muted-foreground">Upload memakai signature server; API secret tidak dikirim ke browser. Perlu konfigurasi CLOUDINARY_* pada server.</p>
+          </section>}
+
+          <section className="space-y-3" aria-labelledby="generator-palette-title">
+            <div className="flex items-center gap-2"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">3</span><div><h3 id="generator-palette-title" className="text-sm font-semibold">Warna tema</h3><p className="text-[11px] text-muted-foreground">Pilih satu warna utama yang sudah didukung preview.</p></div></div>
             {(() => {
-              const colors = colorsForCategory(pageCategory);
-              const recommendedCount = PALETTE_GROUPS[pageCategory]?.length ?? 0;
-              const renderColors = (options: typeof COLOR_OPTIONS) => (
-                <div className="flex gap-2 flex-wrap">
-                  {options.map((c) => (
-                    <button
-                      key={c.value}
-                      onClick={() => setColorScheme(c.value)}
-                      type="button"
-                      aria-pressed={colorScheme === c.value}
-                      className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full border transition-all ${
-                        colorScheme === c.value
-                          ? "border-foreground shadow-sm font-semibold"
-                          : "border-border hover:border-muted-foreground"
-                      }`}
-                    >
-                      <span className={`h-4 w-4 rounded-full border ${c.value === "white" || c.value === "ivory" ? "border-black/20" : "border-transparent"}`} style={{ background: c.color }} />
-                      {c.label}
-                    </button>
-                  ))}
-                </div>
-              );
-              return (
-                <div className="space-y-2">
-                  {recommendedCount > 0 && (
-                    <>
-                      <p className="text-[11px] text-muted-foreground">Rekomendasi {pageCategory}</p>
-                      {renderColors(colors.slice(0, recommendedCount))}
-                      <p className="pt-1 text-[11px] text-muted-foreground">Warna lainnya</p>
-                    </>
-                  )}
-                  {renderColors(colors.slice(recommendedCount))}
-                </div>
-              );
+              const recommended = PALETTE_GROUPS[pageCategory] ?? [];
+              const allColors = colorsForCategory(pageCategory);
+              const displayColors = recommended.length ? allColors.slice(0, Math.max(recommended.length, 5)) : allColors;
+              return <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{displayColors.map((color) => <button key={color.value} type="button" aria-pressed={colorScheme === color.value} onClick={() => setColorScheme(color.value)} className={`flex min-h-10 min-w-0 items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${colorScheme === color.value ? "border-primary bg-primary/[0.045] text-foreground ring-1 ring-primary/20" : "border-border bg-white text-muted-foreground hover:border-primary/35 hover:text-foreground"}`}><span className={`h-5 w-5 shrink-0 rounded-full border ${["white", "ivory"].includes(color.value) ? "border-black/15" : "border-black/5"}`} style={{ backgroundColor: color.color }} /><span className="min-w-0 flex-1 truncate">{color.label}</span>{colorScheme === color.value && <CheckCheck className="h-3.5 w-3.5 shrink-0 text-primary" />}</button>)}</div>;
             })()}
+          </section>
+
+          <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="max-w-sm text-[11px] leading-5 text-muted-foreground">Hasil berupa preview website satu halaman. Tinjau konten sebelum membagikan link ke calon klien.</p>
+            <Button onClick={() => void generate()} disabled={generating} className="h-11 w-full shrink-0 gap-2 rounded-lg px-5 sm:w-auto">
+              {generating ? <><Loader2 className="h-4 w-4 animate-spin" />Sedang membuat preview…</> : <><Wand2 className="h-4 w-4" />Generate Preview Website<ArrowRight className="h-4 w-4" /></>}
+            </Button>
           </div>
-          <Button onClick={generate} disabled={generating} className="w-full gap-2" size="sm">
-            {generating
-              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Generating...</>
-              : <><Wand2 className="h-3.5 w-3.5" />Generate Preview Website</>}
-          </Button>
         </CardContent>
       </Card>
 
       {previews.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Preview yang sudah dibuat ({previews.length})
-          </p>
-          {previews.map((p) => (
-            <div key={p.id} className="rounded-lg border bg-card p-3 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <span
-                    className="w-3 h-3 rounded-full"
-                    style={{
-                      background: COLOR_OPTIONS.find((c) => c.value === p.colorScheme)?.color ?? "#4f46e5",
-                    }}
-                  />
-                  <Badge variant="secondary" className="text-[10px]">
-                    {TEMPLATE_OPTIONS.find((option) => option.value === p.templateStyle)?.label ?? p.templateStyle ?? "Classic"}
-                  </Badge>
-                  <code className="text-xs text-muted-foreground font-mono">/preview/{p.token.slice(0, 8)}…</code>
-                  <Badge variant="outline" className="text-xs gap-1">
-                    <Eye className="h-2.5 w-2.5" />{p.viewCount} views
-                  </Badge>
+        <section className="space-y-3" aria-labelledby="preview-history-title">
+          <div className="flex flex-wrap items-end justify-between gap-2"><div><p className="ws-eyebrow">Hasil tersimpan</p><h2 id="preview-history-title" className="mt-1 text-base font-semibold">Riwayat preview</h2></div><Badge variant="secondary" className="rounded-full">{previews.length} preview</Badge></div>
+          {previews.map((preview) => {
+            const color = COLOR_OPTIONS.find((option) => option.value === preview.colorScheme);
+            const template = TEMPLATE_OPTIONS.find((option) => option.value === preview.templateStyle)?.label ?? preview.templateStyle ?? "Classic";
+            return <Card key={preview.id} className="ws-card min-w-0">
+              <CardContent className="flex min-w-0 flex-col gap-4 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className="mt-0.5 h-9 w-9 shrink-0 rounded-lg border border-border/70" style={{ background: color?.color ?? "#f3f4f6" }} aria-label={`Warna ${color?.label ?? preview.colorScheme}`} />
+                  <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="max-w-full break-words text-sm font-semibold">{preview.pageCategory ?? businessName}</h3><Badge variant="outline" className="max-w-full truncate text-[10px]">{template}</Badge></div><div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground"><span className="inline-flex items-center gap-1"><Clock3 className="h-3 w-3" />{new Date(preview.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</span><span className="inline-flex items-center gap-1"><Eye className="h-3 w-3" />{preview.viewCount} kunjungan</span><span className="inline-flex items-center gap-1"><Palette className="h-3 w-3" />{color?.label ?? preview.colorScheme}</span></div><code className="mt-1 block max-w-full truncate font-mono text-[10px] text-muted-foreground">{window.location.origin}/preview/{preview.token}</code></div>
                 </div>
-                <span className="text-xs text-muted-foreground">
-                  {new Date(p.createdAt).toLocaleDateString("id-ID")}
-                </span>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="flex-1 h-7 text-xs gap-1"
-                  onClick={() => openPreview(p.token)}
-                >
-                  <ExternalLink className="h-3 w-3" />
-                  Buka Preview
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="flex-1 h-7 text-xs gap-1"
-                  onClick={() => copyLink(p.token)}
-                >
-                  {copied === p.token
-                    ? <><CheckCheck className="h-3 w-3 text-green-600" />Disalin!</>
-                    : <><Copy className="h-3 w-3" />Copy Link</>}
-                </Button>
-                <Button
-                  size="sm"
-                  className="flex-1 h-7 text-xs gap-1 bg-green-600 hover:bg-green-700"
-                  onClick={() => waShare(p.token)}
-                >
-                  <svg className="h-3 w-3" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.557 4.12 1.532 5.848L.047 23.869c-.09.383.247.72.63.63l6.021-1.485A11.942 11.942 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.814 9.814 0 01-5.007-1.371l-.358-.213-3.716.917.935-3.618-.234-.372A9.817 9.817 0 012.182 12C2.182 6.565 6.565 2.182 12 2.182S21.818 6.565 21.818 12 17.435 21.818 12 21.818z"/>
-                  </svg>
-                  Kirim WA
-                </Button>
-              </div>
-            </div>
-          ))}
-        </div>
+                <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:flex-wrap lg:w-auto lg:shrink-0">
+                  <Button size="sm" className="h-9 gap-1.5 rounded-lg" onClick={() => openPreview(preview.token)}><ExternalLink className="h-3.5 w-3.5" />Buka Preview</Button>
+                  <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-lg" onClick={() => copyLink(preview.token)}>{copied === preview.token ? <CheckCheck className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}{copied === preview.token ? "Tersalin" : "Salin Link"}</Button>
+                  <Button size="sm" variant="outline" className="col-span-2 h-9 gap-1.5 rounded-lg border-emerald-200 text-emerald-700 hover:bg-emerald-50 sm:col-span-1" onClick={() => waShare(preview.token)}><MessageSquare className="h-3.5 w-3.5" />Kirim WhatsApp</Button>
+                </div>
+              </CardContent>
+            </Card>;
+          })}
+        </section>
       )}
+      {loaded && previews.length === 0 && <div className="flex items-center gap-2 rounded-lg border border-dashed border-border px-4 py-3 text-xs text-muted-foreground"><Layers3 className="h-4 w-4 shrink-0" />Belum ada preview untuk bisnis ini. Hasil pertama akan muncul di sini.</div>}
     </div>
   );
 }

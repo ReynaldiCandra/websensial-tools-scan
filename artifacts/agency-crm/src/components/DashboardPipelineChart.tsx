@@ -37,11 +37,11 @@ export function DashboardPipelineChart({ pipeline }: DashboardPipelineChartProps
         <CartesianGrid vertical={false} stroke="hsl(var(--border))" />
         <XAxis
           dataKey="label"
-          tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+          tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
           tickLine={false}
           axisLine={false}
           interval={0}
-          height={40}
+          height={44}
         />
         <Tooltip content={<CustomTooltip />} cursor={{ fill: "hsl(var(--primary) / 0.08)" }} />
         <Bar dataKey="value" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} maxBarSize={48} />

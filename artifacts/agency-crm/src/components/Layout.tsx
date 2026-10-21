@@ -12,13 +12,14 @@ import {
   Sun,
   Moon,
   Search,
-  Bell,
   BookOpen,
+  ChevronRight,
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
+  Sparkles,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,11 +38,15 @@ const mainNavItems = [
   { href: "/packages", label: "Paket", icon: Package },
 ];
 
+const generatorNavItems = [
+  { href: "/landing-page-generator", label: "Landing Page Generator", icon: Sparkles },
+];
+
 const preferenceNavItems = [
   { href: "/settings", label: "Pengaturan", icon: Settings },
 ];
 
-const navItems = [...mainNavItems, ...preferenceNavItems];
+const navItems = [...mainNavItems, ...generatorNavItems, ...preferenceNavItems];
 
 function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
@@ -64,11 +69,13 @@ function NavGroup({
   items,
   location,
   collapsed = false,
+  onNavigate,
 }: {
   title: string;
   items: typeof navItems;
   location: string;
   collapsed?: boolean;
+  onNavigate?: () => void;
 }) {
   return (
     <div className="flex flex-col gap-1">
@@ -79,16 +86,17 @@ function NavGroup({
       )}
       <nav className="flex flex-col gap-1">
         {items.map((item) => {
-          const isActive = location === item.href;
+          const isActive = location === item.href || (item.href === "/prospects" && location.startsWith("/prospects/"));
           const Icon = item.icon;
           return (
             <Link key={item.href} href={item.href}>
               <div
                 title={collapsed ? item.label : undefined}
-                className={`group relative flex items-center ${collapsed ? "justify-center px-2" : "gap-3 px-3"} rounded-lg py-2 text-sm font-medium transition-all duration-200 cursor-pointer ${
+                onClick={onNavigate}
+                className={`group relative flex min-h-10 items-center ${collapsed ? "justify-center px-2" : "gap-3 px-3"} rounded-lg text-[13px] font-medium transition-colors duration-150 cursor-pointer ${
                   isActive
-                    ? "bg-primary text-primary-foreground shadow-sm shadow-primary/30"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground hover:translate-x-0.5"
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 }`}
               >
                 <Icon className={`h-4 w-4 transition-transform duration-200 ${!isActive && "group-hover:scale-110"}`} />
@@ -109,9 +117,11 @@ function getInitials(name?: string) {
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const { data: settings } = useGetSettings();
   const agencyName = settings?.agencyName || "Websensial";
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return localStorage.getItem("websensial:sidebar-collapsed") === "true"; }
     catch { return false; }
@@ -121,6 +131,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
     try { localStorage.setItem("websensial:sidebar-collapsed", String(sidebarCollapsed)); }
     catch { /* Persisting a UI preference is optional. */ }
   }, [sidebarCollapsed]);
+
+  const pageTitle = useMemo(() => navItems.find((item) => item.href === location)?.label ?? (location.startsWith("/prospects/") ? "Detail Prospek" : "Websensial"), [location]);
+  const searchMatches = useMemo(() => {
+    const query = globalSearch.trim().toLocaleLowerCase("id-ID");
+    return query ? navItems.filter((item) => item.label.toLocaleLowerCase("id-ID").includes(query)).slice(0, 5) : [];
+  }, [globalSearch]);
 
   const handleLogout = async () => {
     try {
@@ -135,11 +151,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <div className="flex h-full min-h-0 flex-col gap-5 py-4">
       <div className={`flex items-center ${sidebarCollapsed && !mobile ? "justify-center px-2" : "justify-between px-4"} py-2`}>
         {(!sidebarCollapsed || mobile) && (
-          <img
-            src="/websensial-logo.png"
-            alt="Websensial"
-            className={`${mobile ? "h-16 w-16" : "h-20 w-20"} shrink-0 rounded-xl object-contain`}
-          />
+          <div className="flex min-w-0 items-center gap-3">
+            <img src="/websensial-logo.png" alt="" className="h-10 w-10 shrink-0 rounded-lg object-contain" />
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-bold tracking-[0.12em] text-foreground">WEBSENSIAL</div>
+              <div className="mt-0.5 truncate text-[10px] text-muted-foreground">Tools Scan & CRM</div>
+            </div>
+          </div>
         )}
         {!mobile && (
           <Button
@@ -156,8 +174,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
         )}
       </div>
       <div className={`flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto ${sidebarCollapsed && !mobile ? "px-2" : "px-3"}`}>
-        <NavGroup title="Menu Utama" items={mainNavItems} location={location} collapsed={sidebarCollapsed && !mobile} />
-        <NavGroup title="Preferensi" items={preferenceNavItems} location={location} collapsed={sidebarCollapsed && !mobile} />
+        <NavGroup title="Menu Utama" items={mainNavItems} location={location} collapsed={sidebarCollapsed && !mobile} onNavigate={() => setMobileOpen(false)} />
+        <NavGroup title="Generate Website" items={generatorNavItems} location={location} collapsed={sidebarCollapsed && !mobile} onNavigate={() => setMobileOpen(false)} />
+        <NavGroup title="Preferensi" items={preferenceNavItems} location={location} collapsed={sidebarCollapsed && !mobile} onNavigate={() => setMobileOpen(false)} />
       </div>
       <div className={`flex items-center border-t border-border px-4 pt-3 ${sidebarCollapsed && !mobile ? "justify-center" : "justify-between"}`}>
         {(!sidebarCollapsed || mobile) && <span className="text-xs text-muted-foreground">Tema</span>}
@@ -168,43 +187,54 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-[100dvh] min-h-0 w-full overflow-hidden bg-background">
-      <aside className={`sticky top-0 hidden h-[100dvh] shrink-0 flex-col border-r border-border bg-card/60 backdrop-blur-sm transition-[width] duration-200 md:flex ${sidebarCollapsed ? "w-[4.5rem]" : "w-64"}`}>
+      <aside className={`sticky top-0 hidden h-[100dvh] shrink-0 flex-col border-r border-border bg-white transition-[width] duration-200 md:flex ${sidebarCollapsed ? "w-[4.5rem]" : "w-[15rem]"}`}>
         <SidebarContent />
       </aside>
 
       <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="flex h-16 items-center justify-between gap-4 border-b border-border bg-card/60 backdrop-blur-sm px-4 md:px-6">
+        <header className="sticky top-0 z-20 flex h-[68px] shrink-0 items-center justify-between gap-3 border-b border-border bg-white px-4 md:px-6">
           <div className="flex items-center gap-3 min-w-0">
-            <Sheet>
+            <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="md:hidden shrink-0">
+                <Button variant="ghost" size="icon" className="md:hidden shrink-0" aria-label="Buka navigasi">
                   <Menu className="h-5 w-5" />
-                  <span className="sr-only">Toggle navigation menu</span>
+                  <span className="sr-only">Buka menu navigasi</span>
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-64 p-0">
+              <SheetContent side="left" className="w-[min(18rem,86vw)] p-0">
                 <SidebarContent mobile />
               </SheetContent>
             </Sheet>
-            <img src="/websensial-logo.png" alt="Websensial" className="h-12 w-12 rounded-lg object-contain md:hidden" />
-            <div className="hidden md:flex flex-col min-w-0">
-              <span className="text-sm font-semibold truncate">Selamat datang, {agencyName} 👋</span>
-              <span className="text-xs text-muted-foreground">Ringkasan aktivitas Crm hari ini.</span>
+            <div className="hidden min-w-0 md:flex md:flex-col">
+              <div className="flex items-center gap-1 text-[11px] text-muted-foreground"><span>Workspace</span><ChevronRight className="h-3 w-3" /><span className="font-medium text-foreground">{pageTitle}</span></div>
+              <span className="mt-1 truncate text-xs text-muted-foreground">Selamat datang, {agencyName}</span>
             </div>
           </div>
 
-          <div className="hidden md:flex flex-1 max-w-sm">
-            <div className="relative w-full">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Cari apa saja…" className="pl-9 bg-background/60" />
-            </div>
+          <div className="relative hidden w-full max-w-[340px] flex-1 md:block">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              aria-label="Cari halaman"
+              placeholder="Cari halaman…"
+              value={globalSearch}
+              onChange={(event) => setGlobalSearch(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && searchMatches[0]) { navigate(searchMatches[0].href); setGlobalSearch(""); }
+                if (event.key === "Escape") setGlobalSearch("");
+              }}
+              className="h-10 rounded-lg border-border bg-background pl-9 text-[13px] placeholder:text-muted-foreground/75"
+            />
+            {searchMatches.length > 0 && (
+              <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 rounded-xl border border-border bg-popover p-1.5 shadow-lg" role="listbox" aria-label="Hasil halaman">
+                {searchMatches.map((item) => {
+                  const Icon = item.icon;
+                  return <button key={item.href} type="button" className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm hover:bg-muted" onClick={() => { navigate(item.href); setGlobalSearch(""); }}><Icon className="h-4 w-4 text-muted-foreground" />{item.label}</button>;
+                })}
+              </div>
+            )}
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" className="relative rounded-full text-muted-foreground hover:bg-muted hover:text-foreground">
-              <Bell className="h-[18px] w-[18px]" />
-              <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-primary" />
-            </Button>
+          <div className="flex shrink-0 items-center gap-1.5">
             <div className="hidden md:block">
               <ThemeToggle />
             </div>
@@ -212,20 +242,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
               variant="ghost"
               size="icon"
               onClick={handleLogout}
-              className="rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
               aria-label="Keluar"
               title="Keluar"
             >
               <LogOut className="h-[18px] w-[18px]" />
             </Button>
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+            <div className="hidden h-9 w-9 items-center justify-center rounded-full border border-primary/10 bg-primary/10 text-xs font-semibold text-primary sm:flex" aria-label={`Akun ${agencyName}`}>
               {getInitials(agencyName)}
             </div>
           </div>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6 lg:p-8">
-          <div className="mx-auto max-w-6xl">
+        <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6 lg:px-8 lg:py-7">
+          <div className="mx-auto w-full max-w-[1440px]">
             {children}
           </div>
         </div>

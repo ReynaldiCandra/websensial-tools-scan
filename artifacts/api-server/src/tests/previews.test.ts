@@ -73,6 +73,19 @@ describeWithDb("public preview link", () => {
         services: "Konsultasi,Solusi Terintegrasi",
         aboutText: "Company profile premium untuk uji tampilan.",
       },
+      {
+        token: randomBytes(12).toString("hex"),
+        prospectId: prospect.id,
+        businessName,
+        category: "Toko Material",
+        pageCategory: "Konstruksi & Renovasi",
+        phone: "081234567890",
+        tagline: "Ruang terencana untuk masa depan",
+        colorScheme: "navy",
+        templateStyle: "company-modern",
+        services: "Konstruksi Bangunan,Renovasi Hunian,Desain Interior",
+        aboutText: "Konsep halaman perusahaan konstruksi untuk uji tampilan.",
+      },
     ]);
   });
 
@@ -115,9 +128,24 @@ describeWithDb("public preview link", () => {
     assert.equal(created.body.colorScheme, "rose");
 
     const preview = await request(app).get(created.body.previewUrl);
-    assert.match(preview.text, /Koleksi Terbaik untuk Penampilan Anda/);
     assert.equal(preview.status, 200);
+    assert.match(preview.text, /Fashion · Koleksi pilihan/);
+    assert.match(preview.text, /Jelajahi Koleksi/);
     assert.match(preview.text, /product-grid/);
+  });
+
+  it("defaults construction category previews to the modern company template", async () => {
+    const created = await request(app)
+      .post("/api/previews")
+      .set("x-api-key", API_KEY)
+      .send({ prospectId, pageCategory: "Konstruksi & Renovasi" });
+
+    assert.equal(created.status, 201);
+    assert.equal(created.body.templateStyle, "company-modern");
+
+    const preview = await request(app).get(created.body.previewUrl);
+    assert.equal(preview.status, 200);
+    assert.match(preview.text, /VISUAL DEMO/);
   });
 
   it("rejects unknown UI styles instead of silently accepting them", async () => {
@@ -129,7 +157,7 @@ describeWithDb("public preview link", () => {
     assert.equal(res.status, 400);
   });
 
-  it("renders the fashion catalog as standalone product cards with demo prices", async () => {
+  it("renders a premium fashion editorial landing page with clearly marked demo content", async () => {
     const rows = await db.select().from(previewsTable).where(eq(previewsTable.prospectId, prospectId!));
     const fashion = rows.find((row) => row.templateStyle === "fashion-catalog");
     assert.ok(fashion);
@@ -139,9 +167,13 @@ describeWithDb("public preview link", () => {
     assert.equal(res.status, 200);
     assert.match(res.text, /product-grid/);
     assert.match(res.text, /Blazer Linen Classic/);
-    assert.match(res.text, /Produk dan harga pada halaman ini adalah contoh demo/);
+    assert.match(res.text, /Foto dan produk pada halaman ini adalah contoh demo/);
+    assert.match(res.text, /Kategori pilihan/);
+    assert.match(res.text, /Koleksi terbaru/);
+    assert.match(res.text, /wa\.me\/6281234567890/);
     assert.match(res.text, /images\.unsplash\.com/);
-    assert.match(String(res.headers["content-security-policy"]), /script-src 'unsafe-inline'/);
+    assert.doesNotMatch(String(res.headers["content-security-policy"]), /script-src/);
+    assert.doesNotMatch(res.text, /<script/i);
     assert.doesNotMatch(res.text, /react|vite|stylesheet href/i);
   });
 
@@ -156,6 +188,24 @@ describeWithDb("public preview link", () => {
     assert.match(res.text, /WEBSENSIAL WEBSITE CONCEPT/);
     assert.match(res.text, /Mengutamakan kualitas di setiap detail/);
     assert.match(String(res.headers["content-security-policy"]), /default-src 'none'/);
+    assert.doesNotMatch(res.text, /<script|react|vite/i);
+  });
+
+  it("renders a construction company profile with architecture visuals and demo portfolio labels", async () => {
+    const rows = await db.select().from(previewsTable).where(eq(previewsTable.prospectId, prospectId!));
+    const construction = rows.find((row) => row.pageCategory === "Konstruksi & Renovasi");
+    assert.ok(construction);
+
+    const res = await request(app).get(`/preview/${construction.token}`);
+
+    assert.equal(res.status, 200);
+    assert.match(res.text, /Konstruksi · Renovasi · Interior/);
+    assert.match(res.text, /Inspirasi proyek/);
+    assert.match(res.text, /VISUAL DEMO/);
+    assert.match(res.text, /bukan portofolio pekerjaan/);
+    assert.match(res.text, /images\.unsplash\.com/);
+    assert.match(res.text, /Konsultasi via WhatsApp/);
+    assert.match(String(res.headers["content-security-policy"]), /img-src https:\/\/images\.unsplash\.com/);
     assert.doesNotMatch(res.text, /<script|react|vite/i);
   });
 

@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { z } from "zod";
 import { toWaNumber } from "../lib/phone";
-import { getCloudinaryConfig, signCloudinaryParams } from "../lib/cloudinary-upload";
+import { cloudinaryUploadSignatureParams, getCloudinaryConfig, signCloudinaryParams } from "../lib/cloudinary-upload";
 import { renderConstructionProfileHTML, renderFashionCatalogHTML, renderIndustryLandingHTML, renderPremiumProfileHTML, type PreviewPageData, type PreviewTemplateStyle } from "../lib/preview-html";
 import { generateLandingCopy } from "../lib/landing-copy";
 import { clientIp } from "../lib/rate-limit";
@@ -42,7 +42,7 @@ const EditorConfigSchema = z.object({
   heroTitle: z.string().trim().max(120).optional(), heroDescription: z.string().trim().max(420).optional(),
   heroButtonLabel: z.string().trim().max(28).optional(), secondaryButtonLabel: z.string().trim().max(28).optional(),
   whatsappLabel: z.string().trim().max(28).optional(), footerText: z.string().trim().max(180).optional(),
-  accentColor: z.union([z.string().regex(/^#[0-9a-fA-F]{6}$/), z.literal("")]).optional(), backgroundColor: z.union([z.string().regex(/^#[0-9a-fA-F]{6}$/), z.literal("")]).optional(), textColor: z.union([z.string().regex(/^#[0-9a-fA-F]{6}$/), z.literal("")]).optional(),
+  accentColor: z.union([z.string().regex(/^#[0-9a-fA-F]{6}$/), z.literal("")]).optional(), secondaryColor: z.union([z.string().regex(/^#[0-9a-fA-F]{6}$/), z.literal("")]).optional(), backgroundColor: z.union([z.string().regex(/^#[0-9a-fA-F]{6}$/), z.literal("")]).optional(), textColor: z.union([z.string().regex(/^#[0-9a-fA-F]{6}$/), z.literal("")]).optional(),
   sectionVisibility: z.record(z.string().max(40), z.boolean()).optional(),
   sectionStyles: z.record(z.string().max(40), z.enum(CARD_STYLES)).optional(),
   galleryItems: z.array(z.object({ title: z.string().trim().max(55), caption: z.string().trim().max(120), imageUrl: z.string().url().optional() })).max(4).optional(),
@@ -206,6 +206,7 @@ function applyPreviewTheme(html: string, data: PreviewPageData & { templateStyle
   const theme = {
     ...baseTheme,
     primary: validHex(data.editorConfig?.accentColor) ? data.editorConfig!.accentColor! : baseTheme.primary,
+    secondary: validHex(data.editorConfig?.secondaryColor) ? data.editorConfig!.secondaryColor! : baseTheme.accent,
     bg: validHex(data.editorConfig?.backgroundColor) ? data.editorConfig!.backgroundColor! : baseTheme.bg,
     text: validHex(data.editorConfig?.textColor) ? data.editorConfig!.textColor! : baseTheme.text,
     light: baseTheme.light,
@@ -217,7 +218,7 @@ function applyPreviewTheme(html: string, data: PreviewPageData & { templateStyle
   const heroTextRules = darkHero
     ? ".hero h1,.hero p,.hero-inner h1,.hero-inner p,.hero .eyebrow,.hero-inner .eyebrow{color:#fff!important}"
     : ".hero h1,.hero p,.hero-inner h1,.hero-inner p{color:var(--preview-text)!important}.hero .eyebrow,.hero-inner .eyebrow{color:var(--preview-primary)!important}.hero{background-image:linear-gradient(135deg,var(--preview-background),color-mix(in srgb,var(--preview-background) 72%,var(--preview-primary)))!important}";
-  const themeCss = `:root{--preview-primary:${theme.primary};--preview-background:${theme.bg};--preview-light:${theme.light};--preview-text:${theme.text};--preview-on-primary:${contrastText(theme.primary)}}html,body{background:var(--preview-background)!important;color:var(--preview-text)!important}.site-header,.header,nav{background-color:var(--preview-background)!important}.demo-banner,.demo-bar,.demo{background:var(--preview-text)!important;color:var(--preview-background)!important}.demo-banner strong,.demo-bar strong,.demo b{color:var(--preview-primary)!important}.brand-mark,.brand-symbol,.brand-text strong,.brand-name,.section-heading h2,.category-info strong,.product-info h3,.nav-links a,.main-nav a,.section-tag{color:var(--preview-text)!important}.eyebrow,.section-tag,.trust-icon,.category-info i,.product-category,.service-number,.service-arrow{color:var(--preview-primary)!important}.hero{color:var(--preview-text)!important}.hero-copy{background:var(--preview-background)!important;color:var(--preview-text)!important}.hero-copy h1,.hero-copy>p{color:var(--preview-text)!important}.hero-copy .eyebrow{color:var(--preview-primary)!important}${heroTextRules}.nav-cta,.button,.hero-cta,.wa-btn,.floating-contact,.floating-whatsapp,.cta{background:var(--preview-primary)!important;color:var(--preview-on-primary)!important}.contact,.contact-box{background:var(--preview-primary)!important;color:var(--preview-on-primary)!important}.contact h2,.contact p,.contact-box h3,.contact-box p{color:var(--preview-on-primary)!important}.site-footer,footer{background:var(--preview-text)!important;color:var(--preview-background)!important}.site-footer strong,footer strong{color:var(--preview-background)!important}.trust-icon,.section-tag{background:var(--preview-light)!important}.feature-strip,.trust-strip,.showcase,.visuals,.project-section,.about{background:color-mix(in srgb,var(--preview-background) 90%,var(--preview-text))!important}.category-card,.product-card,.visual-card,.service-card{background-color:var(--preview-background)!important;border-color:color-mix(in srgb,var(--preview-primary) 18%,transparent)}.floating-whatsapp{position:fixed;right:18px;bottom:18px;z-index:100;display:inline-flex;min-height:46px;align-items:center;gap:9px;padding:0 17px;border:1px solid #ffffff66;border-radius:999px;font:700 13px Inter,system-ui,sans-serif;text-decoration:none;box-shadow:0 8px 24px #0003}.floating-whatsapp:hover{filter:brightness(1.08);transform:translateY(-1px)}@media(max-width:640px){.floating-whatsapp{right:12px;bottom:12px;min-height:42px;padding:0 14px;font-size:12px}}`;
+  const themeCss = `:root{--preview-primary:${theme.primary};--preview-secondary:${theme.secondary};--preview-background:${theme.bg};--preview-light:${theme.light};--preview-text:${theme.text};--preview-on-primary:${contrastText(theme.primary)}}html,body{background:var(--preview-background)!important;color:var(--preview-text)!important}.site-header,.header,nav{background-color:var(--preview-background)!important}.demo-banner,.demo-bar,.demo{background:var(--preview-text)!important;color:var(--preview-background)!important}.demo-banner strong,.demo-bar strong,.demo b{color:var(--preview-primary)!important}.brand-mark,.brand-symbol,.brand-text strong,.brand-name,.section-heading h2,.category-info strong,.product-info h3,.nav-links a,.main-nav a,.section-tag{color:var(--preview-text)!important}.eyebrow,.section-tag,.trust-icon,.category-info i,.product-category,.service-number,.service-arrow{color:var(--preview-primary)!important}.brand span,.service i,.visual-caption span{color:var(--preview-secondary)!important}.hero{color:var(--preview-text)!important}.hero-copy{background:var(--preview-background)!important;color:var(--preview-text)!important}.hero-copy h1,.hero-copy>p{color:var(--preview-text)!important}.hero-copy .eyebrow{color:var(--preview-primary)!important}${heroTextRules}.nav-cta,.button,.hero-cta,.wa-btn,.floating-contact,.floating-whatsapp,.cta{background:var(--preview-primary)!important;color:var(--preview-on-primary)!important}.contact,.contact-box{background:var(--preview-primary)!important;color:var(--preview-on-primary)!important}.contact h2,.contact p,.contact-box h3,.contact-box p{color:var(--preview-on-primary)!important}.site-footer,footer{background:var(--preview-text)!important;color:var(--preview-background)!important}.site-footer strong,footer strong{color:var(--preview-background)!important}.trust-icon,.section-tag{background:var(--preview-light)!important}.feature-strip,.trust-strip,.showcase,.visuals,.project-section,.about{background:color-mix(in srgb,var(--preview-background) 90%,var(--preview-text))!important}.category-card,.product-card,.visual-card,.service-card{background-color:var(--preview-background)!important;border-color:color-mix(in srgb,var(--preview-primary) 18%,transparent)}.floating-whatsapp{position:fixed;right:18px;bottom:18px;z-index:100;display:inline-flex;min-height:46px;align-items:center;gap:9px;padding:0 17px;border:1px solid #ffffff66;border-radius:999px;font:700 13px Inter,system-ui,sans-serif;text-decoration:none;box-shadow:0 8px 24px #0003}.floating-whatsapp:hover{filter:brightness(1.08);transform:translateY(-1px)}@media(max-width:640px){.floating-whatsapp{right:12px;bottom:12px;min-height:42px;padding:0 14px;font-size:12px}}`;
   let themedHtml = html.replace("</style>", `${themeCss}</style>`).replace("</head></head>", "</head>");
   if (!/class="floating-contact"|class="floating-whatsapp"/.test(themedHtml)) {
     const number = toWaNumber(data.phone);
@@ -514,9 +515,8 @@ router.post("/previews/upload-signature", (req, res) => {
   if (!config) return res.status(503).json({ error: "Upload belum dikonfigurasi. Atur CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, dan CLOUDINARY_API_SECRET pada server." });
   const timestamp = Math.floor(Date.now() / 1000);
   const folder = `websensial/previews/${parsed.data.prospectId}`;
-  const publicId = `${parsed.data.assetType}-${randomBytes(8).toString("hex")}`;
-  const signedParams = { allowed_formats: "jpg,png,webp,avif", folder, overwrite: "false", public_id: publicId, timestamp };
-  return res.json({ cloudName: config.cloudName, apiKey: config.apiKey, timestamp, folder, publicId, signature: signCloudinaryParams(signedParams, config.apiSecret), allowedFormats: ["jpg", "png", "webp", "avif"], maxFileBytes: 10 * 1024 * 1024 });
+  const signedParams = cloudinaryUploadSignatureParams(timestamp, folder);
+  return res.json({ cloudName: config.cloudName, apiKey: config.apiKey, timestamp, folder, signature: signCloudinaryParams(signedParams, config.apiSecret), allowedFormats: signedParams.allowed_formats.split(","), maxFileBytes: 10 * 1024 * 1024 });
 });
 
 // POST /api/previews — create a preview
@@ -614,7 +614,7 @@ router.put("/previews/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "ID preview tidak valid." });
   const parsed = EditPreviewBody.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues.map((issue) => `${issue.path.join(".") || "data"}: ${issue.message}`).join("; ") });
   const urls = [parsed.data.logoUrl, parsed.data.heroImageUrl, ...parsed.data.galleryImageUrls, ...(parsed.data.editorConfig.galleryItems ?? []).map((item) => item.imageUrl ?? null)].filter((value): value is string => Boolean(value));
   if (urls.some((value) => { try { const url = new URL(value); return url.protocol !== "https:" || url.hostname !== "res.cloudinary.com" || Boolean(url.username || url.password); } catch { return true; } })) return res.status(400).json({ error: "Media URL tidak valid; gunakan gambar yang diunggah ke Cloudinary." });
   try {
@@ -645,7 +645,7 @@ router.post("/previews/:id/render", async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "ID preview tidak valid." });
   const parsed = EditPreviewBody.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues.map((issue) => `${issue.path.join(".") || "data"}: ${issue.message}`).join("; ") });
   try {
     const [row] = await db.select().from(previewsTable).where(eq(previewsTable.id, id));
     if (!row) return res.status(404).json({ error: "Preview tidak ditemukan." });
@@ -666,6 +666,7 @@ router.post("/previews/:id/render", async (req, res) => {
 
 // GET /api/previews/prospect/:id — list previews for a prospect
 router.delete("/previews/:id", async (req, res) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "ID preview tidak valid." });
   try {
@@ -679,6 +680,7 @@ router.delete("/previews/:id", async (req, res) => {
 });
 
 router.get("/previews/prospect/:id", async (req, res) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
   try {
     const id = Number(req.params.id);
     const rows = await db

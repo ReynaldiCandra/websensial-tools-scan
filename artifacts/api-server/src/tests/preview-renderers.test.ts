@@ -67,8 +67,21 @@ describe("preview landing page renderers", () => {
     assert.match(html, /class="floating-whatsapp" href="https:\/\/wa\.me\/6281234567890/);
     assert.match(html, /Hubungi .* melalui WhatsApp/);
     assert.match(html, /--preview-light:#f1ebdf/);
+    assert.match(html, /--preview-secondary:#c0a77d/);
     assert.match(html, /\.hero h1,\.hero p,\.hero-inner h1,\.hero-inner p,\.hero \.eyebrow,\.hero-inner \.eyebrow\{color:#fff!important\}/);
     assert.doesNotMatch(html, /--preview-primary:#059669|--preview-background:#ecfdf5/);
+  });
+
+  it("uses a distinct paired accent color for the secondary color role", () => {
+    const html = generatePreviewHTML({
+      ...base,
+      pageCategory: "Company Profile",
+      templateStyle: "company-modern",
+      colorScheme: "ivory",
+      editorConfig: { accentColor: "#8a6e50", secondaryColor: "#7c6657", backgroundColor: "#faf7f0", textColor: "#30271f" },
+    });
+    assert.match(html, /--preview-secondary:#7c6657/);
+    assert.match(html, /--preview-primary:#8a6e50/);
   });
 
   it("keeps a template's existing floating WhatsApp link without adding a duplicate", () => {

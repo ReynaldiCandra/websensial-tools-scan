@@ -5,8 +5,8 @@ import type {
   ToastProps,
 } from "@/components/ui/toast"
 
-const TOAST_LIMIT = 1
-const TOAST_REMOVE_DELAY = 1000000
+const TOAST_LIMIT = 3
+const TOAST_REMOVE_DELAY = 4500
 
 type ToasterToast = ToastProps & {
   id: string
@@ -141,6 +141,15 @@ type Toast = Omit<ToasterToast, "id">
 
 function toast({ ...props }: Toast) {
   const id = genId()
+  if (memoryState.toasts.length >= TOAST_LIMIT) {
+    const oldest = memoryState.toasts[memoryState.toasts.length - 1]
+    if (oldest) {
+      const timeout = toastTimeouts.get(oldest.id)
+      if (timeout) clearTimeout(timeout)
+      toastTimeouts.delete(oldest.id)
+      dispatch({ type: "REMOVE_TOAST", toastId: oldest.id })
+    }
+  }
 
   const update = (props: ToasterToast) =>
     dispatch({

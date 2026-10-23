@@ -16,6 +16,10 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiFetch } from "@/lib/api-client";
 import { toWaNumber } from "@/lib/phone";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface Props {
   prospectId: number;
@@ -26,6 +30,15 @@ interface Props {
 
 type AssetType = "logo" | "hero" | "gallery";
 type UploadedAssets = { logo: string; hero: string; gallery: string[] };
+
+function cloudinaryUploadMessage(payload: unknown): string {
+  if (!payload || typeof payload !== "object") return "Cloudinary gagal mengunggah gambar. Silakan coba kembali.";
+  const error = "error" in payload ? payload.error : undefined;
+  const message = error && typeof error === "object" && "message" in error && typeof error.message === "string" ? error.message : "";
+  if (/invalid signature/i.test(message)) return "Tanda tangan upload Cloudinary tidak cocok. Coba lagi; jika berulang, periksa konfigurasi CLOUDINARY di server.";
+  if (!message) return "Cloudinary gagal mengunggah gambar. Silakan coba kembali.";
+  return message.length > 180 ? `${message.slice(0, 177)}…` : message;
+}
 
 interface PreviewRecord {
   id: number;
@@ -50,7 +63,7 @@ interface EditorState {
   logoUrl: string; heroImageUrl: string; galleryImageUrls: string[];
   editorConfig: {
     heroTitle: string; heroDescription: string; heroButtonLabel: string; secondaryButtonLabel: string;
-    whatsappLabel: string; footerText: string; accentColor: string; backgroundColor: string; textColor: string;
+    whatsappLabel: string; footerText: string; accentColor: string; secondaryColor: string; backgroundColor: string; textColor: string;
     sectionVisibility: Record<string, boolean>; sectionStyles: Record<string, CardStyle>;
     galleryItems: Array<{ title: string; caption: string; imageUrl: string }>;
   };
@@ -128,38 +141,45 @@ const TEMPLATE_OPTIONS = [
   { value: "classic", label: "Landing Page Classic", description: "Landing page sederhana serbaguna" },
 ];
 
-const PALETTE_GROUPS: Record<string, string[]> = {
-  "Company Profile": ["ivory", "beige", "taupe", "brown", "black"],
-  "Konstruksi & Renovasi": ["navy", "charcoal", "slate", "ivory", "beige"],
-  "Hotel / Property": ["navy", "ivory", "beige", "taupe", "charcoal"],
-  "Tour & Travel": ["soft-blue", "navy", "sage-green", "ivory", "charcoal"],
-  "Online Course": ["indigo", "navy", "soft-blue", "charcoal", "white"],
-  "Restoran": ["brown", "ivory", "sage-green", "charcoal", "beige"],
-  "Fashion": ["ivory", "beige", "taupe", "brown", "black"],
-  "Fashion & Luxury": ["ivory", "beige", "taupe", "brown", "black"],
-  "Corporate, Hukum, & Keuangan": ["white", "ivory", "navy", "charcoal", "black"],
-  "Teknologi & SaaS": ["charcoal", "dark-slate", "navy", "soft-blue", "ivory"],
-  "Portofolio Kreatif & Agensi": ["black", "charcoal", "ivory", "neon-accent"],
-  "Wellness, Skincare, & Kesehatan": ["ivory", "taupe", "sage-green", "soft-rose", "brown"],
-  "Landing Page High Konversi": ["navy", "soft-blue", "white", "charcoal", "neon-accent"],
-  "Landing Page High Konversi (Iklan Meta & Google Ads)": ["navy", "soft-blue", "white", "charcoal", "neon-accent"],
+const PALETTE_PAIR_GROUPS: Record<string, Array<[string, string]>> = {
+  "Company Profile": [["ivory", "taupe"], ["beige", "brown"], ["black", "ivory"]],
+  "Konstruksi & Renovasi": [["navy", "beige"], ["charcoal", "ivory"], ["slate", "soft-blue"]],
+  "Hotel / Property": [["navy", "beige"], ["ivory", "taupe"], ["charcoal", "soft-blue"]],
+  "Tour & Travel": [["soft-blue", "navy"], ["sage-green", "ivory"], ["navy", "amber"]],
+  "Online Course": [["indigo", "soft-blue"], ["navy", "amber"], ["charcoal", "neon-accent"]],
+  "Restoran": [["brown", "ivory"], ["sage-green", "beige"], ["charcoal", "amber"]],
+  "Fashion": [["ivory", "taupe"], ["black", "beige"], ["soft-rose", "brown"]],
+  "Fashion & Luxury": [["ivory", "taupe"], ["black", "beige"], ["soft-rose", "brown"]],
+  "Corporate, Hukum, & Keuangan": [["white", "navy"], ["ivory", "charcoal"], ["navy", "soft-blue"]],
+  "Teknologi & SaaS": [["charcoal", "soft-blue"], ["dark-slate", "neon-accent"], ["navy", "ivory"]],
+  "Portofolio Kreatif & Agensi": [["black", "neon-accent"], ["charcoal", "soft-rose"], ["ivory", "violet"]],
+  "Wellness, Skincare, & Kesehatan": [["ivory", "sage-green"], ["soft-rose", "taupe"], ["beige", "brown"]],
+  "Landing Page High Konversi": [["navy", "soft-blue"], ["white", "indigo"], ["charcoal", "neon-accent"]],
+  "Landing Page High Konversi (Iklan Meta & Google Ads)": [["navy", "soft-blue"], ["white", "indigo"], ["charcoal", "neon-accent"]],
 };
 
-const PREVIEW_PALETTES: Record<string, { primary: string; background: string; text: string }> = {
-  ivory: { primary: "#8a6e50", background: "#faf7f0", text: "#30271f" }, beige: { primary: "#987856", background: "#f4eee5", text: "#392f25" },
-  taupe: { primary: "#7c6657", background: "#f2eeea", text: "#302721" }, brown: { primary: "#795548", background: "#f5eee9", text: "#34241d" },
-  black: { primary: "#c6a76d", background: "#171717", text: "#f8f5ef" }, white: { primary: "#24466b", background: "#ffffff", text: "#1f2937" },
-  navy: { primary: "#284c77", background: "#f2f6fb", text: "#162a43" }, charcoal: { primary: "#d0b477", background: "#262a2f", text: "#f6f4ef" },
-  "dark-slate": { primary: "#8ab4d6", background: "#1e293b", text: "#f1f5f9" }, "soft-blue": { primary: "#477ba8", background: "#f2f7fb", text: "#203448" },
-  "neon-accent": { primary: "#c6f36b", background: "#17191d", text: "#f7f8f4" }, "sage-green": { primary: "#607b65", background: "#f2f5f0", text: "#26352a" },
-  "soft-rose": { primary: "#ad6878", background: "#fbf3f4", text: "#38272b" }, indigo: { primary: "#4f46e5", background: "#eef2ff", text: "#1e1b4b" },
-  emerald: { primary: "#059669", background: "#ecfdf5", text: "#064e3b" }, amber: { primary: "#d97706", background: "#fffbeb", text: "#78350f" },
-  rose: { primary: "#e11d48", background: "#fff1f2", text: "#881337" }, violet: { primary: "#7c3aed", background: "#f5f3ff", text: "#2e1065" }, slate: { primary: "#475569", background: "#f8fafc", text: "#0f172a" },
+const colorPairsForCategory = (pageCategory: string) => PALETTE_PAIR_GROUPS[pageCategory] ?? [["navy", "soft-blue"], ["ivory", "sage-green"], ["charcoal", "amber"]] as Array<[string, string]>;
+
+const PREVIEW_PALETTES: Record<string, { primary: string; accent: string; background: string; text: string }> = {
+  ivory: { primary: "#8a6e50", accent: "#c0a77d", background: "#faf7f0", text: "#30271f" }, beige: { primary: "#987856", accent: "#c2a887", background: "#f4eee5", text: "#392f25" },
+  taupe: { primary: "#7c6657", accent: "#aa9382", background: "#f2eeea", text: "#302721" }, brown: { primary: "#795548", accent: "#a9826b", background: "#f5eee9", text: "#34241d" },
+  black: { primary: "#c6a76d", accent: "#e1c68f", background: "#171717", text: "#f8f5ef" }, white: { primary: "#24466b", accent: "#7192b3", background: "#ffffff", text: "#1f2937" },
+  navy: { primary: "#284c77", accent: "#6f91b8", background: "#f2f6fb", text: "#162a43" }, charcoal: { primary: "#d0b477", accent: "#e5c879", background: "#262a2f", text: "#f6f4ef" },
+  "dark-slate": { primary: "#8ab4d6", accent: "#a6c9e6", background: "#1e293b", text: "#f1f5f9" }, "soft-blue": { primary: "#477ba8", accent: "#7eadd0", background: "#f2f7fb", text: "#203448" },
+  "neon-accent": { primary: "#c6f36b", accent: "#d6ff7f", background: "#17191d", text: "#f7f8f4" }, "sage-green": { primary: "#607b65", accent: "#91a58b", background: "#f2f5f0", text: "#26352a" },
+  "soft-rose": { primary: "#ad6878", accent: "#d9aab0", background: "#fbf3f4", text: "#38272b" }, indigo: { primary: "#4f46e5", accent: "#818cf8", background: "#eef2ff", text: "#1e1b4b" },
+  emerald: { primary: "#059669", accent: "#34d399", background: "#ecfdf5", text: "#064e3b" }, amber: { primary: "#d97706", accent: "#fbbf24", background: "#fffbeb", text: "#78350f" },
+  rose: { primary: "#e11d48", accent: "#fb7185", background: "#fff1f2", text: "#881337" }, violet: { primary: "#7c3aed", accent: "#a78bfa", background: "#f5f3ff", text: "#2e1065" }, slate: { primary: "#475569", accent: "#94a3b8", background: "#f8fafc", text: "#0f172a" },
 };
 
 function defaultColorFor(pageCategory: string): string {
-  const recommended = colorsForCategory(pageCategory)[0]?.value ?? "ivory";
-  return COLOR_OPTIONS.some((option) => option.value === recommended) ? recommended : "ivory";
+  return colorPairsForCategory(pageCategory)[0]?.[0] ?? "ivory";
+}
+function defaultAccentFor(pageCategory: string): string {
+  return colorPairsForCategory(pageCategory)[0]?.[1] ?? "sage-green";
+}
+function colorPairForScheme(pageCategory: string, scheme: string): [string, string] {
+  return colorPairsForCategory(pageCategory).find(([primary]) => primary === scheme) ?? colorPairsForCategory(pageCategory)[0] ?? ["ivory", "sage-green"];
 }
 
 const COLOR_OPTIONS = [
@@ -183,12 +203,6 @@ const COLOR_OPTIONS = [
   { value: "violet", label: "Violet", color: "#7c3aed" },
   { value: "slate", label: "Slate", color: "#475569" },
 ];
-
-function colorsForCategory(pageCategory: string) {
-  const recommended = PALETTE_GROUPS[pageCategory] ?? [];
-  const values = [...recommended, ...COLOR_OPTIONS.map((option) => option.value).filter((value) => !recommended.includes(value))];
-  return values.map((value) => COLOR_OPTIONS.find((option) => option.value === value)!).filter(Boolean);
-}
 
 const defaultTemplateFor = (pageCategory: string) => {
   if (pageCategory === "Fashion" || pageCategory === "Fashion & Luxury") return "fashion-catalog";
@@ -216,15 +230,18 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
     CATEGORY_OPTIONS.includes(category) ? category : "Company Profile",
   );
   const [colorScheme, setColorScheme] = useState(() => defaultColorFor(CATEGORY_OPTIONS.includes(category) ? category : "Company Profile"));
+  const [accentScheme, setAccentScheme] = useState(() => defaultAccentFor(CATEGORY_OPTIONS.includes(category) ? category : "Company Profile"));
   const [initialCardStyle, setInitialCardStyle] = useState<CardStyle>("modern-minimal");
-  const palette = PREVIEW_PALETTES[colorScheme] ?? PREVIEW_PALETTES.ivory;
-  const previewEditorConfig = (config: EditorState["editorConfig"], scheme = colorScheme): EditorState["editorConfig"] => {
+  const paletteForScheme = (scheme: string) => PREVIEW_PALETTES[scheme] ?? PREVIEW_PALETTES.ivory;
+  const previewEditorConfig = (config: EditorState["editorConfig"], scheme = colorScheme, accent = accentScheme, category = pageCategory): EditorState["editorConfig"] => {
     const selectedPalette = PREVIEW_PALETTES[scheme] ?? PREVIEW_PALETTES.ivory;
+    const [, pairedColor] = colorPairForScheme(category, scheme);
     return {
       ...config,
       accentColor: config.accentColor || selectedPalette.primary,
       backgroundColor: config.backgroundColor || selectedPalette.background,
       textColor: config.textColor || selectedPalette.text,
+      secondaryColor: config.secondaryColor || PREVIEW_PALETTES[accent]?.primary || PREVIEW_PALETTES[pairedColor]?.primary || selectedPalette.accent,
     };
   };
   const [templateStyle, setTemplateStyle] = useState(() => defaultTemplateFor(category));
@@ -234,9 +251,11 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
   const [generating, setGenerating] = useState(false);
   const [previews, setPreviews] = useState<PreviewRecord[]>([]);
   const [deletingPreviewId, setDeletingPreviewId] = useState<number | null>(null);
+  const [pendingDeletePreview, setPendingDeletePreview] = useState<PreviewRecord | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [activePreview, setActivePreview] = useState<PreviewRecord | null>(null);
+  const [editorPalette, setEditorPalette] = useState<{ primary: string; secondary: string; background: string; text: string } | null>(null);
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [savedEditor, setSavedEditor] = useState<EditorState | null>(null);
   const [previewHtml, setPreviewHtml] = useState("");
@@ -254,14 +273,14 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch(`/api/previews/prospect/${prospectId}`)
+    apiFetch(`/api/previews/prospect/${prospectId}`, { cache: "no-store" })
       .then(async (res) => {
         if (!res.ok) throw new Error("Gagal memuat preview sebelumnya");
         const data = (await res.json()) as PreviewRecord[];
         if (!cancelled) setPreviews(data);
       })
       .catch(() => {
-        if (!cancelled) setPreviews([]);
+        if (!cancelled) toast({ title: "Riwayat preview belum dapat dimuat", description: "Periksa koneksi lalu muat ulang halaman.", variant: "destructive" });
       })
       .finally(() => {
         if (!cancelled) setLoaded(true);
@@ -271,7 +290,10 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
 
   const defaultEditorConfig = (): EditorState["editorConfig"] => ({
     heroTitle: "", heroDescription: "", heroButtonLabel: "", secondaryButtonLabel: "", whatsappLabel: "", footerText: "",
-    accentColor: palette.primary, backgroundColor: palette.background, textColor: palette.text,
+    accentColor: PREVIEW_PALETTES[colorScheme]?.primary ?? PREVIEW_PALETTES.ivory.primary,
+    secondaryColor: PREVIEW_PALETTES[accentScheme]?.primary ?? PREVIEW_PALETTES.ivory.accent,
+    backgroundColor: PREVIEW_PALETTES[colorScheme]?.background ?? PREVIEW_PALETTES.ivory.background,
+    textColor: PREVIEW_PALETTES[colorScheme]?.text ?? PREVIEW_PALETTES.ivory.text,
     sectionVisibility: { hero: true, trust: true, categories: true, collection: true, products: true, services: true, gallery: true, about: true, cta: true, footer: true },
     sectionStyles: { services: initialCardStyle, gallery: initialCardStyle, products: initialCardStyle },
     galleryItems: [],
@@ -300,7 +322,7 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
     const nextCategory = CATEGORY_OPTIONS.includes(category) ? category : "Company Profile";
     const nextColor = defaultColorFor(nextCategory);
     setTagline(""); setServices(""); setAboutText(""); setAssets({ logo: "", hero: "", gallery: [] });
-    setPageCategory(nextCategory); setTemplateStyle(defaultTemplateFor(category)); setColorScheme(nextColor);
+    setPageCategory(nextCategory); setTemplateStyle(defaultTemplateFor(category)); setColorScheme(nextColor); setAccentScheme(defaultAccentFor(nextCategory));
   }, [prospectId, category]);
 
   const requestLandingCopy = async (options: { notes?: string; services?: string; pageCategory?: string; templateStyle?: string } = {}) => {
@@ -316,7 +338,7 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
     let aiWarning = "";
     try {
       try {
-        generatedCopy = await requestLandingCopy({ notes: "", services: services || undefined });
+        generatedCopy = await requestLandingCopy({ notes: aiNotes || undefined, services: services || undefined });
       } catch (error) {
         aiWarning = error instanceof Error ? error.message : "Z.ai tidak tersedia.";
       }
@@ -346,7 +368,7 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
           logoUrl: assets.logo || undefined,
           heroImageUrl: assets.hero || undefined,
           galleryImageUrls: assets.gallery,
-          editorConfig: { ...editorConfig, accentColor: palette.primary, backgroundColor: palette.background, textColor: palette.text, sectionStyles: { ...editorConfig.sectionStyles, services: initialCardStyle, gallery: initialCardStyle, products: initialCardStyle }, galleryItems: editorConfig.galleryItems.map((item) => ({ ...item, imageUrl: item.imageUrl || undefined })) },
+          editorConfig: { ...editorConfig, ...previewEditorConfig(editorConfig, colorScheme, accentScheme, pageCategory), accentColor: paletteForScheme(colorScheme).primary, secondaryColor: paletteForScheme(accentScheme).primary, backgroundColor: paletteForScheme(colorScheme).background, textColor: paletteForScheme(colorScheme).text, sectionStyles: { ...editorConfig.sectionStyles, services: initialCardStyle, gallery: initialCardStyle, products: initialCardStyle }, galleryItems: editorConfig.galleryItems.map((item) => ({ ...item, imageUrl: item.imageUrl || undefined })) },
         }),
       });
       const data = await res.json();
@@ -375,10 +397,10 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
       const signResponse = await apiFetch("/api/previews/upload-signature", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prospectId, assetType }) });
       const signed = await signResponse.json();
       if (!signResponse.ok) throw new Error(signed.error ?? "Gagal menyiapkan upload.");
-      const form = new FormData(); form.append("file", file); form.append("api_key", signed.apiKey); form.append("timestamp", String(signed.timestamp)); form.append("folder", signed.folder); form.append("public_id", signed.publicId); form.append("overwrite", "false"); form.append("allowed_formats", signed.allowedFormats.join(",")); form.append("signature", signed.signature);
+      const form = new FormData(); form.append("file", file); form.append("api_key", signed.apiKey); form.append("timestamp", String(signed.timestamp)); form.append("folder", signed.folder); form.append("allowed_formats", signed.allowedFormats.join(",")); form.append("signature", signed.signature);
       const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloudName)}/image/upload`, { method: "POST", body: form });
-      const uploaded = await response.json();
-      if (!response.ok || typeof uploaded.secure_url !== "string") throw new Error(uploaded.error?.message ?? "Upload gambar gagal.");
+      const uploaded = await response.json().catch(() => null);
+      if (!response.ok || typeof uploaded.secure_url !== "string") throw new Error(cloudinaryUploadMessage(uploaded));
       setAssets((previous) => assetType === "gallery" ? { ...previous, gallery: [...previous.gallery, uploaded.secure_url].slice(0, 3) } : { ...previous, [assetType]: uploaded.secure_url });
       toast({ title: "Aset berhasil diunggah", description: "Aset akan disimpan bersama preview berikutnya." });
     } catch (error) { toast({ title: "Upload aset gagal", description: error instanceof Error ? error.message : "Terjadi kesalahan saat upload.", variant: "destructive" }); }
@@ -395,10 +417,10 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
       const signedRes = await apiFetch("/api/previews/upload-signature", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prospectId, assetType }) });
       const signed = await signedRes.json();
       if (!signedRes.ok) throw new Error(signed.error ?? "Gagal menyiapkan upload.");
-      const form = new FormData(); form.append("file", file); form.append("api_key", signed.apiKey); form.append("timestamp", String(signed.timestamp)); form.append("folder", signed.folder); form.append("public_id", signed.publicId); form.append("overwrite", "false"); form.append("allowed_formats", signed.allowedFormats.join(",")); form.append("signature", signed.signature);
+      const form = new FormData(); form.append("file", file); form.append("api_key", signed.apiKey); form.append("timestamp", String(signed.timestamp)); form.append("folder", signed.folder); form.append("allowed_formats", signed.allowedFormats.join(",")); form.append("signature", signed.signature);
       const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloudName)}/image/upload`, { method: "POST", body: form });
-      const upload = await response.json();
-      if (!response.ok || typeof upload.secure_url !== "string") throw new Error(upload.error?.message ?? "Upload gambar gagal.");
+      const upload = await response.json().catch(() => null);
+      if (!response.ok || typeof upload.secure_url !== "string") throw new Error(cloudinaryUploadMessage(upload));
       const url = upload.secure_url as string;
       setEditor((current) => !current ? current : assetType === "logo" ? { ...current, logoUrl: url } : assetType === "hero" ? { ...current, heroImageUrl: url } : { ...current, galleryImageUrls: [...current.galleryImageUrls, url].slice(0, 3), editorConfig: { ...current.editorConfig, galleryItems: [...current.editorConfig.galleryItems, { title: "", caption: "", imageUrl: url }].slice(0, 4) } });
       toast({ title: "Gambar siap dipakai", description: "Simpan perubahan untuk memperbarui link preview." });
@@ -412,6 +434,13 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
       const response = await apiFetch(`/api/previews/${record.id}/editor`);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Gagal memuat editor.");
+      const recordPalette = paletteForScheme(data.colorScheme ?? "ivory");
+      setEditorPalette({
+        primary: data.editorConfig?.accentColor || recordPalette.primary,
+        secondary: data.editorConfig?.secondaryColor || recordPalette.accent,
+        background: data.editorConfig?.backgroundColor || recordPalette.background,
+        text: data.editorConfig?.textColor || recordPalette.text,
+      });
       const normalized: EditorState = {
         tagline: data.tagline ?? "", services: data.services ?? [], aboutText: data.aboutText ?? "", colorScheme: data.colorScheme ?? "ivory",
         logoUrl: data.logoUrl ?? "", heroImageUrl: data.heroImageUrl ?? "", galleryImageUrls: data.galleryImageUrls ?? [],
@@ -439,7 +468,12 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
 
   const payloadForEditor = () => {
     if (!editor) throw new Error("Pilih preview yang akan diedit.");
-    return { ...editor, editorConfig: { ...previewEditorConfig(editor.editorConfig, editor.colorScheme), galleryItems: editor.editorConfig.galleryItems.map((item) => ({ ...item, imageUrl: item.imageUrl || undefined })) } };
+    return {
+      ...editor,
+      logoUrl: editor.logoUrl || null,
+      heroImageUrl: editor.heroImageUrl || null,
+      editorConfig: { ...editor.editorConfig, galleryItems: editor.editorConfig.galleryItems.map((item) => ({ ...item, imageUrl: item.imageUrl || undefined })) },
+    };
   };
 
   const refreshLivePreview = async () => {
@@ -455,7 +489,6 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
   useEffect(() => { if (activePreview && editor) void refreshLivePreview(); }, [activePreview?.id, editor]);
 
   const deletePreview = async (preview: PreviewRecord) => {
-    if (!window.confirm(`Hapus preview ${preview.pageCategory ?? businessName} secara permanen? Link publiknya tidak akan berlaku lagi.`)) return;
     setDeletingPreviewId(preview.id);
     try {
       const response = await apiFetch(`/api/previews/${preview.id}`, { method: "DELETE" });
@@ -463,13 +496,20 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
         const result = await response.json().catch(() => ({}));
         throw new Error(result.error ?? "Preview gagal dihapus.");
       }
-      setPreviews((current) => current.filter((item) => item.id !== preview.id));
+      const listResponse = await apiFetch(`/api/previews/prospect/${prospectId}?refresh=${Date.now()}`, { cache: "no-store", headers: { "Cache-Control": "no-cache" } });
+      if (!listResponse.ok) throw new Error("Penghapusan dikirim, tetapi status riwayat belum dapat diverifikasi. Muat ulang lalu periksa kembali.");
+      const remaining = await listResponse.json() as PreviewRecord[];
+      if (remaining.some((item) => item.id === preview.id)) {
+        setPreviews((current) => current.filter((item) => item.id !== preview.id));
+        throw new Error("Penghapusan berhasil diterima, tetapi layanan masih mengembalikan salinan riwayat lama. Muat ulang lagi beberapa saat.");
+      }
+      setPreviews(remaining);
       if (activePreview?.id === preview.id) {
         setActivePreview(null); setEditor(null); setSavedEditor(null); setPreviewHtml("");
       }
-      toast({ title: "Preview dihapus", description: "Preview dan link publiknya telah dihapus permanen." });
+      toast({ title: "Preview dihapus", description: "Penghapusan permanen sudah dikonfirmasi oleh server; link publik tidak lagi berlaku." });
     } catch (error) {
-      toast({ title: "Gagal menghapus preview", description: error instanceof Error ? error.message : "Terjadi kesalahan.", variant: "destructive" });
+      toast({ title: "Penghapusan belum terverifikasi", description: error instanceof Error ? error.message : "Terjadi kesalahan.", variant: "destructive" });
     } finally { setDeletingPreviewId(null); }
   };
 
@@ -481,6 +521,12 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Gagal menyimpan perubahan.");
       setSavedEditor(editor);
+      setEditorPalette({
+        primary: editor.editorConfig.accentColor || paletteForScheme(editor.colorScheme).primary,
+        secondary: editor.editorConfig.secondaryColor || paletteForScheme(editor.colorScheme).accent,
+        background: editor.editorConfig.backgroundColor || paletteForScheme(editor.colorScheme).background,
+        text: editor.editorConfig.textColor || paletteForScheme(editor.colorScheme).text,
+      });
       setActivePreview((current) => current ? { ...current, token: data.token } : current);
       toast({ title: "Perubahan tersimpan", description: "URL preview tetap sama dan sudah menampilkan versi tersimpan." });
     } catch (error) {
@@ -504,6 +550,10 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
 
   const copyLink = (token: string) => {
     const url = `${window.location.origin}/preview/${token}`;
+    if (!navigator.clipboard?.writeText) {
+      toast({ title: "Tidak dapat menyalin link", description: "Clipboard tidak tersedia. Salin URL preview secara manual.", variant: "destructive" });
+      return;
+    }
     void navigator.clipboard.writeText(url).then(() => {
       setCopied(token);
       window.setTimeout(() => setCopied(null), 2000);
@@ -514,7 +564,8 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
   };
 
   const openPreview = (token: string) => {
-    window.open(`/preview/${token}`, "_blank");
+    const opened = window.open(`/preview/${token}`, "_blank", "noopener,noreferrer");
+    if (!opened) toast({ title: "Preview siap dibuka", description: "Browser memblokir tab baru. Izinkan pop-up atau buka link preview secara manual." });
   };
 
   const waShare = (token: string) => {
@@ -559,6 +610,7 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
                   setTemplateStyle(defaultTemplateFor(value));
                   const nextColor = defaultColorFor(value);
                   setColorScheme(nextColor);
+                  setAccentScheme(defaultAccentFor(value));
                 }}>
                   <SelectTrigger className="h-10 rounded-lg text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>{CATEGORY_OPTIONS.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}</SelectContent>
@@ -581,6 +633,7 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
               <div className="space-y-1.5"><Label htmlFor="preview-tagline" className="text-xs">Tagline <span className="font-normal text-muted-foreground">(opsional)</span></Label><Input id="preview-tagline" placeholder={`Layanan terbaik untuk ${category.toLowerCase()} Anda`} value={tagline} onChange={(event) => setTagline(event.target.value)} className="h-10 rounded-lg text-sm" /></div>
               <div className="space-y-1.5"><Label htmlFor="preview-services" className="text-xs">Layanan / produk <span className="font-normal text-muted-foreground">(pisahkan dengan koma)</span></Label><Input id="preview-services" placeholder="Konsultasi, produk unggulan…" value={services} onChange={(event) => setServices(event.target.value)} className="h-10 rounded-lg text-sm" /></div>
               <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="preview-about" className="text-xs">Tentang bisnis <span className="font-normal text-muted-foreground">(opsional)</span></Label><Textarea id="preview-about" placeholder="Ceritakan keunggulan bisnis, target pelanggan, dan hal yang ingin ditampilkan…" value={aboutText} onChange={(event) => setAboutText(event.target.value)} rows={3} className="resize-y rounded-lg text-sm" /></div>
+              <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="generator-ai-notes" className="text-xs">Arahan untuk Z.ai <span className="font-normal text-muted-foreground">(opsional)</span></Label><Textarea id="generator-ai-notes" placeholder="Contoh: tonjolkan layanan katering kantor, target HRD di Bekasi, gaya profesional dan hangat, ajak konsultasi via WhatsApp…" value={aiNotes} onChange={(event) => setAiNotes(event.target.value)} rows={3} className="resize-y rounded-lg text-sm"/><p className="text-[11px] leading-4 text-muted-foreground">Arahan ini dipakai saat Generate Preview dan Generate copy AI. Masukkan target pelanggan, keunggulan faktual, gaya bahasa, dan tujuan CTA.</p></div>
             </div>
           </section>
 
@@ -591,13 +644,13 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
           </section>}
 
           <section className="space-y-3" aria-labelledby="generator-palette-title">
-            <div className="flex items-center gap-2"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">{showAssetControls ? "4" : "3"}</span><div><h3 id="generator-palette-title" className="text-sm font-semibold">Warna tema</h3><p className="text-[11px] text-muted-foreground">Pilih satu warna utama yang sudah didukung preview.</p></div></div>
-            {(() => {
-              const recommended = PALETTE_GROUPS[pageCategory] ?? [];
-              const allColors = colorsForCategory(pageCategory);
-              const displayColors = recommended.length ? allColors.slice(0, Math.max(recommended.length, 5)) : allColors;
-              return <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{displayColors.map((color) => <button key={color.value} type="button" aria-pressed={colorScheme === color.value} onClick={() => setColorScheme(color.value)} className={`flex min-h-10 min-w-0 items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${colorScheme === color.value ? "border-primary bg-primary/[0.045] text-foreground ring-1 ring-primary/20" : "border-border bg-white text-muted-foreground hover:border-primary/35 hover:text-foreground"}`}><span className={`h-5 w-5 shrink-0 rounded-full border ${["white", "ivory"].includes(color.value) ? "border-black/15" : "border-black/5"}`} style={{ backgroundColor: color.color }} /><span className="min-w-0 flex-1 truncate">{color.label}</span>{colorScheme === color.value && <CheckCheck className="h-3.5 w-3.5 shrink-0 text-primary" />}</button>)}</div>;
-            })()}
+            <div className="flex items-center gap-2"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">{showAssetControls ? "4" : "3"}</span><div><h3 id="generator-palette-title" className="text-sm font-semibold">Pasangan warna rekomendasi</h3><p className="text-[11px] text-muted-foreground">Setiap pilihan memakai 2 warna utama yang dipasangkan khusus untuk kategori ini; latar dan teks otomatis dijaga agar kontras.</p></div></div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">{colorPairsForCategory(pageCategory).map(([baseColor, pairColor]) => {
+              const base = COLOR_OPTIONS.find((option) => option.value === baseColor)!;
+              const paired = COLOR_OPTIONS.find((option) => option.value === pairColor)!;
+              const selected = colorScheme === baseColor && accentScheme === pairColor;
+              return <button key={`${baseColor}-${pairColor}`} type="button" aria-label={`Gunakan pasangan warna ${base.label} dan ${paired.label}`} aria-pressed={selected} onClick={() => { setColorScheme(baseColor); setAccentScheme(pairColor); }} className={`flex min-h-12 min-w-0 items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected ? "border-primary bg-primary/[0.045] text-foreground ring-1 ring-primary/20" : "border-border bg-white text-muted-foreground hover:border-primary/35 hover:text-foreground"}`}><span className="flex shrink-0 -space-x-1">{[base.color, paired.color].map((swatch) => <span key={swatch} className="h-6 w-6 rounded-full border-2 border-white shadow-sm ring-1 ring-black/10" style={{ backgroundColor: swatch }} />)}</span><span className="min-w-0 flex-1"><span className="block truncate font-medium">{base.label} + {paired.label}</span><span className="block text-[10px] text-muted-foreground">Warna utama + aksen pasangan</span></span>{selected && <CheckCheck className="h-3.5 w-3.5 shrink-0 text-primary" />}</button>;
+            })}</div>
           </section>
 
           <section className="space-y-3" aria-labelledby="generator-card-style-title"><div className="flex items-center gap-2"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">{showAssetControls ? "5" : "4"}</span><div><h3 id="generator-card-style-title" className="text-sm font-semibold">Pilih Style Card</h3><p className="text-[11px] text-muted-foreground">Tentukan tampilan kartu layanan, portfolio, dan produk pada preview pertama.</p></div></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{CARD_STYLES.map((style) => <button type="button" key={style.value} aria-pressed={initialCardStyle === style.value} onClick={() => setInitialCardStyle(style.value)} className={`rounded-lg border p-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9a7b4f] ${initialCardStyle === style.value ? "border-[#9a7b4f] bg-[#faf7f0] ring-1 ring-[#9a7b4f]" : "border-border hover:border-[#c8b58c]"}`}><CardStyleThumbnail style={style.value}/><span className="mt-2 block text-[11px] font-semibold">{style.label}</span><span className="mt-0.5 block text-[9px] leading-4 text-muted-foreground">{style.description}</span></button>)}</div></section>
@@ -617,7 +670,7 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
           <Card className="h-fit min-w-0 border-[#ebe6df] shadow-none lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto"><CardHeader className="pb-3"><CardTitle className="text-sm">Konten website</CardTitle><CardDescription>Edit teks sebelum dikirim kepada klien.</CardDescription></CardHeader><CardContent>
             <Tabs defaultValue="content"><TabsList className="grid h-auto w-full grid-cols-4 bg-[#f5f2ed] p-1"><TabsTrigger value="content" className="px-1.5 text-[10px]">Konten</TabsTrigger><TabsTrigger value="images" className="px-1.5 text-[10px]">Gambar</TabsTrigger><TabsTrigger value="styles" className="px-1.5 text-[10px]">Style</TabsTrigger><TabsTrigger value="sections" className="px-1.5 text-[10px]">Bagian</TabsTrigger></TabsList>
               <TabsContent value="content" className="mt-4 space-y-3">
-                <div className="rounded-xl border border-[#eadfc9] bg-[#fbf7ee] p-3"><Label htmlFor="ai-copy-notes" className="text-xs font-semibold">Generate copy dengan AI</Label><Textarea id="ai-copy-notes" value={aiNotes} onChange={(e) => setAiNotes(e.target.value)} className="mt-2 min-h-16 bg-white text-xs" placeholder="Keunikan/kata kunci yang diketahui pemilik bisnis (opsional)"/><Button type="button" onClick={() => void generateCopy()} disabled={aiGenerating} className="mt-2 h-9 w-full gap-2 bg-[#9a7b4f] hover:bg-[#806440]">{aiGenerating ? <Loader2 className="h-4 w-4 animate-spin"/> : <Sparkles className="h-4 w-4"/>}Generate copy AI</Button><p className="mt-2 text-[10px] leading-4 text-muted-foreground">AI membuat draft dari data prospek dan input Anda. Periksa klaim/fakta sebelum publish.</p></div>
+                <div className="rounded-xl border border-[#eadfc9] bg-[#fbf7ee] p-3"><Label htmlFor="editor-ai-notes" className="text-xs font-semibold">Arahan prompt untuk Z.ai</Label><Textarea id="editor-ai-notes" value={aiNotes} onChange={(e) => setAiNotes(e.target.value)} className="mt-2 min-h-16 bg-white text-xs" placeholder="Target pelanggan, gaya bahasa, keunggulan faktual, dan CTA yang diinginkan…"/><Button type="button" onClick={() => void generateCopy()} disabled={aiGenerating} className="mt-2 h-9 w-full gap-2 bg-[#9a7b4f] hover:bg-[#806440]">{aiGenerating ? <Loader2 className="h-4 w-4 animate-spin"/> : <Sparkles className="h-4 w-4"/>}Generate copy AI</Button><p className="mt-2 text-[10px] leading-4 text-muted-foreground">Z.ai memakai data prospek, kategori, template, dan arahan ini untuk membuat draft. Periksa klaim/fakta sebelum publish.</p></div>
                 <div className="space-y-1.5"><Label className="text-xs">Judul Hero / Tagline</Label><Textarea value={editor.editorConfig.heroTitle || editor.tagline} onChange={(e) => setEditor({ ...editor, tagline: e.target.value, editorConfig: { ...editor.editorConfig, heroTitle: e.target.value } })} rows={2}/></div>
                 <div className="space-y-1.5"><Label className="text-xs">Deskripsi Hero</Label><Textarea value={editor.editorConfig.heroDescription || editor.aboutText} onChange={(e) => setEditor({ ...editor, aboutText: e.target.value, editorConfig: { ...editor.editorConfig, heroDescription: e.target.value } })} rows={3}/></div>
                 <div className="space-y-1.5"><Label className="text-xs">Tentang Bisnis</Label><Textarea value={editor.aboutText} onChange={(e) => setEditor({ ...editor, aboutText: e.target.value })} rows={4}/></div>
@@ -629,7 +682,7 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
                 {editor.galleryImageUrls.map((url,index) => <div className="flex items-center gap-2 rounded-md border p-2" key={`${url}-${index}`}><img src={url} className="h-12 w-12 rounded object-cover" alt={`Galeri ${index+1}`}/><span className="min-w-0 flex-1 truncate text-xs">Foto galeri {index+1}</span><Button size="sm" variant="ghost" onClick={() => setEditor({ ...editor, galleryImageUrls: editor.galleryImageUrls.filter((_,i)=>i!==index), editorConfig: { ...editor.editorConfig, galleryItems: editor.editorConfig.galleryItems.filter((_,i)=>i!==index) } })}>Hapus</Button></div>)}
                 <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed p-3 text-xs text-muted-foreground"><ImagePlus className="h-4 w-4"/>Tambah gambar galeri (maks. 3)<input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,image/avif" disabled={editor.galleryImageUrls.length>=3} onChange={(e)=>{const file=e.target.files?.[0]; if(file) void editorUpload(file,"gallery");e.currentTarget.value="";}}/></label>
               </TabsContent>
-              <TabsContent value="styles" className="mt-4 space-y-4"><div className="space-y-2"><Label className="text-xs">Warna aksen</Label><Input type="color" value={editor.editorConfig.accentColor || PREVIEW_PALETTES[editor.colorScheme]?.primary || PREVIEW_PALETTES.ivory.primary} onChange={(e)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, accentColor: e.target.value } })}/><Label className="text-xs">Warna latar</Label><Input type="color" value={editor.editorConfig.backgroundColor || PREVIEW_PALETTES[editor.colorScheme]?.background || PREVIEW_PALETTES.ivory.background} onChange={(e)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, backgroundColor: e.target.value } })}/><Label className="text-xs">Warna teks</Label><Input type="color" value={editor.editorConfig.textColor || PREVIEW_PALETTES[editor.colorScheme]?.text || PREVIEW_PALETTES.ivory.text} onChange={(e)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, textColor: e.target.value } })}/><Button variant="outline" size="sm" onClick={()=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, accentColor:"", backgroundColor:"", textColor:"" } })}>Reset warna template</Button></div><div className="space-y-2"><Label className="text-xs font-semibold">Pilih Style Card · Layanan</Label><div className="grid grid-cols-2 gap-2">{CARD_STYLES.map((style)=> <button type="button" key={style.value} aria-pressed={editor.editorConfig.sectionStyles.services===style.value} onClick={()=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, sectionStyles: { ...editor.editorConfig.sectionStyles, services: style.value } } })} className={`rounded-lg border p-2 text-left ${editor.editorConfig.sectionStyles.services===style.value ? "border-[#9a7b4f] ring-1 ring-[#9a7b4f]" : "border-border"}`}><CardStyleThumbnail style={style.value}/><span className="block text-[11px] font-semibold">{style.label}</span><span className="block text-[9px] text-muted-foreground">{style.description}</span></button>)}</div>{renderCardStylePicker("gallery", "Portfolio / galeri")}{renderCardStylePicker("products", "Produk / katalog")}</div></TabsContent>
+              <TabsContent value="styles" className="mt-4 space-y-4"><div className="space-y-2"><Label className="text-xs">Warna utama</Label><Input type="color" value={editor.editorConfig.accentColor || editorPalette?.primary || PREVIEW_PALETTES[editor.colorScheme]?.primary || PREVIEW_PALETTES.ivory.primary} onChange={(e)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, accentColor: e.target.value } })}/><Label className="text-xs">Warna pasangan</Label><Input type="color" value={editor.editorConfig.secondaryColor || editorPalette?.secondary || PREVIEW_PALETTES[editor.colorScheme]?.accent || PREVIEW_PALETTES.ivory.accent} onChange={(e)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, secondaryColor: e.target.value } })}/><Label className="text-xs">Warna latar</Label><Input type="color" value={editor.editorConfig.backgroundColor || editorPalette?.background || PREVIEW_PALETTES[editor.colorScheme]?.background || PREVIEW_PALETTES.ivory.background} onChange={(e)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, backgroundColor: e.target.value } })}/><Label className="text-xs">Warna teks</Label><Input type="color" value={editor.editorConfig.textColor || editorPalette?.text || PREVIEW_PALETTES[editor.colorScheme]?.text || PREVIEW_PALETTES.ivory.text} onChange={(e)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, textColor: e.target.value } })}/><Button variant="outline" size="sm" onClick={()=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, accentColor: editorPalette?.primary || "", secondaryColor: editorPalette?.secondary || "", backgroundColor: editorPalette?.background || "", textColor: editorPalette?.text || "" } })}>Reset warna template</Button></div><div className="space-y-2"><Label className="text-xs font-semibold">Pilih Style Card · Layanan</Label><div className="grid grid-cols-2 gap-2">{CARD_STYLES.map((style)=> <button type="button" key={style.value} aria-pressed={editor.editorConfig.sectionStyles.services===style.value} onClick={()=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, sectionStyles: { ...editor.editorConfig.sectionStyles, services: style.value } } })} className={`rounded-lg border p-2 text-left ${editor.editorConfig.sectionStyles.services===style.value ? "border-[#9a7b4f] ring-1 ring-[#9a7b4f]" : "border-border"}`}><CardStyleThumbnail style={style.value}/><span className="block text-[11px] font-semibold">{style.label}</span><span className="block text-[9px] text-muted-foreground">{style.description}</span></button>)}</div>{renderCardStylePicker("gallery", "Portfolio / galeri")}{renderCardStylePicker("products", "Produk / katalog")}</div></TabsContent>
               <TabsContent value="sections" className="mt-4 space-y-3">{Object.entries(editor.editorConfig.sectionVisibility).map(([key,enabled])=><div key={key} className="flex items-center justify-between rounded-md border p-2.5"><Label className="text-xs capitalize">{key}</Label><Switch checked={enabled} onCheckedChange={(checked)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, sectionVisibility: { ...editor.editorConfig.sectionVisibility, [key]: checked } } })}/></div>)}</TabsContent>
             </Tabs>
           </CardContent></Card>
@@ -656,7 +709,7 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
                   <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-lg" onClick={() => void openEditor(preview)}><Wand2 className="h-3.5 w-3.5"/>Edit</Button><Button size="sm" className="h-9 gap-1.5 rounded-lg" onClick={() => openPreview(preview.token)}><ExternalLink className="h-3.5 w-3.5" />Buka Preview</Button>
                   <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-lg" onClick={() => copyLink(preview.token)}>{copied === preview.token ? <CheckCheck className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}{copied === preview.token ? "Tersalin" : "Salin Link"}</Button>
                   <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-lg border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => waShare(preview.token)}><MessageSquare className="h-3.5 w-3.5" />Kirim WhatsApp</Button>
-                  <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-lg border-destructive/30 text-destructive hover:bg-destructive/5" aria-label={`Hapus preview ${preview.pageCategory ?? businessName}`} disabled={deletingPreviewId === preview.id} onClick={() => void deletePreview(preview)}>{deletingPreviewId === preview.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}Hapus</Button>
+                  <AlertDialog open={pendingDeletePreview?.id === preview.id} onOpenChange={(open) => { if (!open) setPendingDeletePreview(null); }}><AlertDialogTrigger asChild><Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-lg border-destructive/30 text-destructive hover:bg-destructive/5" aria-label={`Hapus preview ${preview.pageCategory ?? businessName}`} disabled={deletingPreviewId === preview.id} onClick={() => setPendingDeletePreview(preview)}><Trash2 className="h-3.5 w-3.5" />Hapus</Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Hapus preview secara permanen?</AlertDialogTitle><AlertDialogDescription>Preview {preview.pageCategory ?? businessName} dan link publiknya akan dihapus. Tindakan ini tidak dapat dibatalkan.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Batal</AlertDialogCancel><AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => { setPendingDeletePreview(null); void deletePreview(preview); }}>Hapus permanen</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
                 </div>
               </CardContent>
             </Card>;

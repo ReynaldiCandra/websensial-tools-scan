@@ -158,6 +158,7 @@ describeWithDb("public preview link", () => {
         templateStyle: "company-modern",
         editorConfig: {
           accentColor: "",
+          secondaryColor: "",
           backgroundColor: "",
           textColor: "",
           sectionStyles: { services: "glass", gallery: "elegant-classic" },
@@ -165,6 +166,7 @@ describeWithDb("public preview link", () => {
       });
     assert.equal(created.status, 201);
     assert.equal(created.body.editorConfig.accentColor, "");
+    assert.equal(created.body.editorConfig.secondaryColor, "");
 
     const preview = await request(app).get(created.body.previewUrl);
     assert.equal(preview.status, 200);
@@ -185,6 +187,15 @@ describeWithDb("public preview link", () => {
       .delete(`/api/previews/${created.body.id}`)
       .set("x-api-key", API_KEY);
     assert.equal(deleted.status, 204);
+    assert.match(String(deleted.headers["cache-control"]), /no-store/);
+
+    const history = await request(app).get(`/api/previews/prospect/${prospectId}`).set("x-api-key", API_KEY);
+    assert.equal(history.status, 200);
+    assert.match(String(history.headers["cache-control"]), /no-store/);
+    assert.equal(history.body.some((preview: { id: number }) => preview.id === created.body.id), false);
+    const refreshHistory = await request(app).get(`/api/previews/prospect/${prospectId}?refresh=1`).set("x-api-key", API_KEY).set("Cache-Control", "no-cache");
+    assert.equal(refreshHistory.status, 200);
+    assert.equal(refreshHistory.body.some((preview: { id: number }) => preview.id === created.body.id), false);
 
     const publicPage = await request(app).get(created.body.previewUrl);
     assert.equal(publicPage.status, 404);

@@ -14,6 +14,10 @@ export function signCloudinaryParams(params: Record<string, string | number>, ap
   return crypto.createHash("sha1").update(canonical + apiSecret).digest("hex");
 }
 
+export function cloudinaryUploadSignatureParams(timestamp: number, folder: string) {
+  return { allowed_formats: "jpg,png,webp,avif", folder, timestamp };
+}
+
 export function isCloudinaryImageUrl(value: string): boolean {
   try {
     const url = new URL(value);

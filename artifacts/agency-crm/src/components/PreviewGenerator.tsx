@@ -59,14 +59,23 @@ interface EditorPreviewData extends EditorState {
   id: number; token: string; businessName: string; ownerName: string | null; category: string; phone: string;
   address: string | null; pageCategory: string; templateStyle: string; updatedAt: string;
 }
-const CARD_STYLES: Array<{ value: CardStyle; label: string; className: string; description: string }> = [
-  { value: "modern-minimal", label: "Modern Minimal", className: "bg-white", description: "Border halus dan shadow lembut" },
-  { value: "elegant-classic", label: "Elegant Classic", className: "bg-[#f4eee5]", description: "Aksen champagne dan editorial" },
-  { value: "clean", label: "Clean Card", className: "bg-slate-50", description: "Ringan dan terstruktur" },
-  { value: "image-focus", label: "Image Focus", className: "bg-gradient-to-br from-slate-300 to-slate-100", description: "Gambar menjadi fokus" },
-  { value: "rounded", label: "Rounded Card", className: "rounded-2xl bg-indigo-50", description: "Sudut ramah dan modern" },
-  { value: "glass", label: "Glassmorphism", className: "bg-gradient-to-br from-sky-100 to-violet-100", description: "Kaca ringan dengan blur" },
+const CARD_STYLES: Array<{ value: CardStyle; label: string; description: string }> = [
+  { value: "modern-minimal", label: "Modern Minimal", description: "Putih, border tipis, dan shadow lembut · profesional" },
+  { value: "elegant-classic", label: "Elegant Classic", description: "Tipografi elegan, aksen beige/gold · fashion, properti, hospitality" },
+  { value: "clean", label: "Clean Card", description: "Sederhana, ringan, dan terstruktur · katalog dan layanan" },
+  { value: "image-focus", label: "Image Focus", description: "Gambar dominan dengan rasio konsisten · portfolio dan galeri" },
+  { value: "rounded", label: "Rounded Card", description: "Sudut membulat dan padding nyaman · produk digital" },
+  { value: "glass", label: "Glassmorphism", description: "Translucent dengan blur ringan dan teks kontras" },
 ];
+
+function CardStyleThumbnail({ style }: { style: CardStyle }) {
+  const isImageFocus = style === "image-focus";
+  return <div aria-hidden="true" className={`relative h-16 overflow-hidden ${style === "elegant-classic" ? "bg-[#f5efe5] p-2" : style === "clean" ? "bg-slate-50 p-2" : style === "glass" ? "bg-gradient-to-br from-sky-200 via-cyan-100 to-violet-200 p-2" : style === "rounded" ? "bg-gradient-to-br from-indigo-100 to-sky-50 p-2" : "bg-white p-2"}`}>
+    <div className={`relative h-full overflow-hidden ${style === "modern-minimal" ? "rounded-md border border-slate-200 bg-white p-1.5 shadow-sm" : style === "elegant-classic" ? "rounded-sm border border-[#d5c39e] bg-[#fffdf8] px-2 py-1" : style === "clean" ? "border-b border-slate-200 bg-slate-50 px-1 py-1" : style === "image-focus" ? "rounded-md border border-slate-200 bg-white shadow-md" : style === "rounded" ? "rounded-xl border border-indigo-100 bg-white p-1.5 shadow-sm" : "rounded-lg border border-white/70 bg-white/55 p-1.5 shadow-md backdrop-blur-sm"}`}>
+      {isImageFocus ? <><div className="h-8 rounded-t bg-gradient-to-br from-amber-200 via-rose-200 to-sky-300"/><div className="flex items-center justify-between px-1 pt-1"><span className="h-1 w-12 rounded-full bg-slate-500"/><span className="h-2 w-5 rounded-full bg-indigo-500"/></div></> : style === "elegant-classic" ? <><div className="mb-1 h-px w-8 bg-[#b99b62]"/><div className="font-serif text-[8px] text-[#5a4932]">Atelier <span className="text-[#b99b62]">✦</span></div><div className="mt-1 h-px w-full bg-[#e8dfce]"/><div className="mt-1 h-1 w-10 rounded-full bg-[#d8c7a5]"/></> : style === "clean" ? <><div className="text-[7px] font-semibold text-slate-700">Layanan pilihan</div><div className="mt-1 h-px w-full bg-slate-200"/><div className="mt-1 h-1 w-14 rounded-full bg-slate-300"/><div className="mt-1 h-1 w-9 rounded-full bg-slate-200"/></> : style === "glass" ? <><div className="text-[7px] font-semibold text-slate-800">Studio collection</div><div className="mt-1 h-1 w-14 rounded-full bg-slate-500/60"/><div className="mt-1 inline-flex rounded-full bg-white/80 px-2 py-0.5 text-[5px] text-slate-700">Explore ↗</div></> : <><div className="flex items-center gap-1"><span className={`grid h-4 w-4 place-items-center rounded ${style === "rounded" ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-500"}`}><span className="text-[7px]">{style === "rounded" ? "✦" : "01"}</span></span><span className="text-[7px] font-semibold text-slate-700">{style === "rounded" ? "Made for you" : "Trusted service"}</span></div><div className="ml-5 mt-1 h-1 w-14 rounded-full bg-slate-300"/><div className="ml-5 mt-1 h-1 w-9 rounded-full bg-slate-200"/></>}
+    </div>
+  </div>;
+}
 
 const CATEGORY_OPTIONS = [
   "Company Profile",
@@ -193,6 +202,7 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
     const firstRecommended = colorsForCategory(CATEGORY_OPTIONS.includes(category) ? category : "Company Profile")[0]?.value ?? "indigo";
     return COLOR_OPTIONS.some((option) => option.value === firstRecommended) ? firstRecommended : "ivory";
   });
+  const [initialCardStyle, setInitialCardStyle] = useState<CardStyle>("modern-minimal");
   const [templateStyle, setTemplateStyle] = useState(() => defaultTemplateFor(category));
   const supportsLogoUpload = templateStyle.startsWith("company-") || templateStyle === "corporate-finance" || templateStyle === "technology-saas" || templateStyle === "creative-agency" || templateStyle === "wellness-health" || templateStyle === "conversion-landing";
   const supportsBusinessAssets = templateStyle !== "classic";
@@ -215,6 +225,7 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
   const [editorError, setEditorError] = useState("");
   const dirty = Boolean(editor && savedEditor && JSON.stringify(editor) !== JSON.stringify(savedEditor));
   const editorCurrent = useMemo(() => editor, [editor]);
+  const renderCardStylePicker = (section: string, label: string) => <div className="space-y-2"><Label className="text-xs font-semibold">Pilih Style Card · {label}</Label><div className="grid grid-cols-2 gap-2">{CARD_STYLES.map((style) => <button type="button" key={style.value} aria-pressed={editor?.editorConfig.sectionStyles[section] === style.value} onClick={() => editor && setEditor({ ...editor, editorConfig: { ...editor.editorConfig, sectionStyles: { ...editor.editorConfig.sectionStyles, [section]: style.value } } })} className={`rounded-lg border p-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9a7b4f] ${editor?.editorConfig.sectionStyles[section] === style.value ? "border-[#9a7b4f] bg-[#faf7f0] ring-1 ring-[#9a7b4f]" : "border-border hover:border-[#c8b58c]"}`}><CardStyleThumbnail style={style.value}/><span className="mt-2 block text-[11px] font-semibold">{style.label}</span><span className="mt-0.5 block text-[9px] leading-4 text-muted-foreground">{style.description}</span></button>)}</div></div>;
 
   useEffect(() => {
     let cancelled = false;
@@ -237,37 +248,88 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
     heroTitle: "", heroDescription: "", heroButtonLabel: "", secondaryButtonLabel: "", whatsappLabel: "", footerText: "",
     accentColor: "", backgroundColor: "", textColor: "",
     sectionVisibility: { hero: true, trust: true, categories: true, collection: true, products: true, services: true, gallery: true, about: true, cta: true, footer: true },
-    sectionStyles: { services: "modern-minimal", gallery: "image-focus", products: "rounded", testimonials: "elegant-classic" },
+    sectionStyles: { services: initialCardStyle, gallery: initialCardStyle, products: initialCardStyle },
     galleryItems: [],
+  });
+  const applyLandingCopy = (copy: LandingCopy, current: EditorState): EditorState => ({
+    ...current,
+    tagline: copy.tagline,
+    services: copy.services,
+    aboutText: copy.aboutText,
+    editorConfig: {
+      ...current.editorConfig,
+      heroTitle: copy.heroTitle,
+      heroDescription: copy.heroDescription,
+      heroButtonLabel: copy.heroButtonLabel,
+      secondaryButtonLabel: copy.secondaryButtonLabel,
+      whatsappLabel: copy.whatsappLabel,
+      footerText: copy.footerText,
+      galleryItems: copy.gallery.map((item, index) => ({
+        ...item,
+        imageUrl: current.editorConfig.galleryItems[index]?.imageUrl ?? current.galleryImageUrls[index] ?? "",
+      })),
+    },
   });
 
   useEffect(() => { setTagline(""); setServices(""); setAboutText(""); setAssets({ logo: "", hero: "", gallery: [] }); setPageCategory(CATEGORY_OPTIONS.includes(category) ? category : "Company Profile"); setTemplateStyle(defaultTemplateFor(category)); }, [prospectId, category]);
 
+  const requestLandingCopy = async (options: { notes?: string; services?: string; pageCategory?: string; templateStyle?: string } = {}) => {
+    const response = await apiFetch("/api/previews/generate-copy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prospectId, pageCategory: options.pageCategory ?? pageCategory, templateStyle: options.templateStyle ?? templateStyle, notes: options.notes ?? (aiNotes || undefined), services: options.services ?? (draftServices || undefined) }) });
+    const data = await response.json() as LandingCopy & { error?: string };
+    if (!response.ok) throw new Error(data.error ?? "AI gagal menghasilkan copy.");
+    return data;
+  };
+
   const generate = async () => {
     setGenerating(true);
+    let generatedCopy: LandingCopy | undefined;
+    let aiWarning = "";
     try {
+      try {
+        generatedCopy = await requestLandingCopy({ notes: "", services: services || undefined });
+      } catch (error) {
+        aiWarning = error instanceof Error ? error.message : "Z.ai tidak tersedia.";
+      }
+
+      const copy = generatedCopy;
+      const editorConfig = defaultEditorConfig();
+      if (copy) {
+        editorConfig.heroTitle = copy.heroTitle;
+        editorConfig.heroDescription = copy.heroDescription;
+        editorConfig.heroButtonLabel = copy.heroButtonLabel;
+        editorConfig.secondaryButtonLabel = copy.secondaryButtonLabel;
+        editorConfig.whatsappLabel = copy.whatsappLabel;
+        editorConfig.footerText = copy.footerText;
+        editorConfig.galleryItems = copy.gallery.map((item, index) => ({ ...item, imageUrl: assets.gallery[index] ?? "" }));
+      }
       const res = await apiFetch(`/api/previews`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           prospectId,
-          tagline: tagline || undefined,
+          tagline: (copy?.tagline ?? tagline) || undefined,
           colorScheme,
-          services: services || undefined,
-          aboutText: aboutText || undefined,
+          services: (copy?.services.join(", ") ?? services) || undefined,
+          aboutText: (copy?.aboutText ?? aboutText) || undefined,
           pageCategory,
           templateStyle,
           logoUrl: assets.logo || undefined,
           heroImageUrl: assets.hero || undefined,
           galleryImageUrls: assets.gallery,
-          editorConfig: defaultEditorConfig(),
+          editorConfig: { ...editorConfig, galleryItems: editorConfig.galleryItems.map((item) => ({ ...item, imageUrl: item.imageUrl || undefined })) },
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setPreviews((prev) => [data, ...prev]);
       await openEditor(data as PreviewRecord);
-      toast({ title: "Preview website berhasil dibuat", description: "Edit copy, gambar dan layout sebelum membagikan ke klien." });
+      if (copy) {
+        setTagline(copy.tagline);
+        setServices(copy.services.join(", "));
+        setAboutText(copy.aboutText);
+        setDraftServices(copy.services.join(", "));
+      }
+      toast({ title: "Preview website berhasil dibuat", description: aiWarning ? `Z.ai tidak tersedia (${aiWarning}). Copy default digunakan; Anda tetap dapat generate ulang dari editor.` : "Copy awal dibuat otomatis oleh Z.ai. Tinjau fakta dan klaim sebelum membagikan." });
     } catch (e: unknown) {
       toast({ title: "Gagal generate preview", description: (e as Error).message, variant: "destructive" });
     } finally {
@@ -337,11 +399,9 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
   const generateCopy = async () => {
     setAiGenerating(true); setEditorError("");
     try {
-      const response = await apiFetch("/api/previews/generate-copy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prospectId, pageCategory, templateStyle, notes: aiNotes || undefined, services: draftServices || undefined }) });
-      const data = await response.json() as LandingCopy & { error?: string };
-      if (!response.ok) throw new Error(data.error ?? "AI gagal menghasilkan copy.");
+      const data = await requestLandingCopy({ notes: aiNotes || undefined, services: draftServices || undefined, pageCategory: activePreview?.pageCategory ?? pageCategory, templateStyle: activePreview?.templateStyle ?? templateStyle });
       setTagline(data.tagline); setServices(data.services.join(", ")); setAboutText(data.aboutText); setDraftServices(data.services.join(", "));
-      if (editor) setEditor({ ...editor, tagline: data.tagline, services: data.services, aboutText: data.aboutText, editorConfig: { ...editor.editorConfig, heroTitle: data.heroTitle, heroDescription: data.heroDescription, heroButtonLabel: data.heroButtonLabel, secondaryButtonLabel: data.secondaryButtonLabel, whatsappLabel: data.whatsappLabel, footerText: data.footerText, galleryItems: data.gallery.map((item, index) => ({ ...item, imageUrl: editor.galleryImageUrls[index] ?? "" })) } });
+      setEditor((current) => current ? applyLandingCopy(data, current) : current);
       toast({ title: "Draft copy AI berhasil dibuat", description: "Silakan tinjau semua konten sebelum disimpan atau dibagikan." });
     } catch (error) { setEditorError(error instanceof Error ? error.message : "AI gagal menghasilkan copy."); }
     finally { setAiGenerating(false); }
@@ -488,6 +548,8 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
             })()}
           </section>
 
+          <section className="space-y-3" aria-labelledby="generator-card-style-title"><div className="flex items-center gap-2"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">{showAssetControls ? "5" : "4"}</span><div><h3 id="generator-card-style-title" className="text-sm font-semibold">Pilih Style Card</h3><p className="text-[11px] text-muted-foreground">Tentukan tampilan kartu layanan, portfolio, dan produk pada preview pertama.</p></div></div><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{CARD_STYLES.map((style) => <button type="button" key={style.value} aria-pressed={initialCardStyle === style.value} onClick={() => setInitialCardStyle(style.value)} className={`rounded-lg border p-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9a7b4f] ${initialCardStyle === style.value ? "border-[#9a7b4f] bg-[#faf7f0] ring-1 ring-[#9a7b4f]" : "border-border hover:border-[#c8b58c]"}`}><CardStyleThumbnail style={style.value}/><span className="mt-2 block text-[11px] font-semibold">{style.label}</span><span className="mt-0.5 block text-[9px] leading-4 text-muted-foreground">{style.description}</span></button>)}</div></section>
+
           <div className="flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="max-w-sm text-[11px] leading-5 text-muted-foreground">Hasil berupa preview website satu halaman. Tinjau konten sebelum membagikan link ke calon klien.</p>
             <Button onClick={() => void generate()} disabled={generating} className="h-11 w-full shrink-0 gap-2 rounded-lg px-5 sm:w-auto">
@@ -503,7 +565,7 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
           <Card className="h-fit min-w-0 border-[#ebe6df] shadow-none"><CardHeader className="pb-3"><CardTitle className="text-sm">Konten website</CardTitle><CardDescription>Edit teks sebelum dikirim kepada klien.</CardDescription></CardHeader><CardContent>
             <Tabs defaultValue="content"><TabsList className="grid h-auto w-full grid-cols-4 bg-[#f5f2ed] p-1"><TabsTrigger value="content" className="px-1.5 text-[10px]">Konten</TabsTrigger><TabsTrigger value="images" className="px-1.5 text-[10px]">Gambar</TabsTrigger><TabsTrigger value="styles" className="px-1.5 text-[10px]">Style</TabsTrigger><TabsTrigger value="sections" className="px-1.5 text-[10px]">Bagian</TabsTrigger></TabsList>
               <TabsContent value="content" className="mt-4 space-y-3">
-                <div className="rounded-xl border border-[#eadfc9] bg-[#fbf7ee] p-3"><Label htmlFor="ai-copy-notes" className="text-xs font-semibold">Buat draft dengan AI</Label><Textarea id="ai-copy-notes" value={aiNotes} onChange={(e) => setAiNotes(e.target.value)} className="mt-2 min-h-16 bg-white text-xs" placeholder="Keunikan/kata kunci yang diketahui pemilik bisnis (opsional)"/><Button type="button" onClick={() => void generateCopy()} disabled={aiGenerating} className="mt-2 h-9 w-full gap-2 bg-[#9a7b4f] hover:bg-[#806440]">{aiGenerating ? <Loader2 className="h-4 w-4 animate-spin"/> : <Sparkles className="h-4 w-4"/>}Generate copy AI</Button><p className="mt-2 text-[10px] leading-4 text-muted-foreground">AI membuat draft dari data prospek dan input Anda. Periksa klaim/fakta sebelum publish.</p></div>
+                <div className="rounded-xl border border-[#eadfc9] bg-[#fbf7ee] p-3"><Label htmlFor="ai-copy-notes" className="text-xs font-semibold">Generate copy dengan AI</Label><Textarea id="ai-copy-notes" value={aiNotes} onChange={(e) => setAiNotes(e.target.value)} className="mt-2 min-h-16 bg-white text-xs" placeholder="Keunikan/kata kunci yang diketahui pemilik bisnis (opsional)"/><Button type="button" onClick={() => void generateCopy()} disabled={aiGenerating} className="mt-2 h-9 w-full gap-2 bg-[#9a7b4f] hover:bg-[#806440]">{aiGenerating ? <Loader2 className="h-4 w-4 animate-spin"/> : <Sparkles className="h-4 w-4"/>}Generate copy AI</Button><p className="mt-2 text-[10px] leading-4 text-muted-foreground">AI membuat draft dari data prospek dan input Anda. Periksa klaim/fakta sebelum publish.</p></div>
                 <div className="space-y-1.5"><Label className="text-xs">Judul Hero / Tagline</Label><Textarea value={editor.editorConfig.heroTitle || editor.tagline} onChange={(e) => setEditor({ ...editor, tagline: e.target.value, editorConfig: { ...editor.editorConfig, heroTitle: e.target.value } })} rows={2}/></div>
                 <div className="space-y-1.5"><Label className="text-xs">Deskripsi Hero</Label><Textarea value={editor.editorConfig.heroDescription || editor.aboutText} onChange={(e) => setEditor({ ...editor, aboutText: e.target.value, editorConfig: { ...editor.editorConfig, heroDescription: e.target.value } })} rows={3}/></div>
                 <div className="space-y-1.5"><Label className="text-xs">Tentang Bisnis</Label><Textarea value={editor.aboutText} onChange={(e) => setEditor({ ...editor, aboutText: e.target.value })} rows={4}/></div>
@@ -515,7 +577,7 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
                 {editor.galleryImageUrls.map((url,index) => <div className="flex items-center gap-2 rounded-md border p-2" key={`${url}-${index}`}><img src={url} className="h-12 w-12 rounded object-cover" alt={`Galeri ${index+1}`}/><span className="min-w-0 flex-1 truncate text-xs">Foto galeri {index+1}</span><Button size="sm" variant="ghost" onClick={() => setEditor({ ...editor, galleryImageUrls: editor.galleryImageUrls.filter((_,i)=>i!==index), editorConfig: { ...editor.editorConfig, galleryItems: editor.editorConfig.galleryItems.filter((_,i)=>i!==index) } })}>Hapus</Button></div>)}
                 <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed p-3 text-xs text-muted-foreground"><ImagePlus className="h-4 w-4"/>Tambah gambar galeri (maks. 3)<input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,image/avif" disabled={editor.galleryImageUrls.length>=3} onChange={(e)=>{const file=e.target.files?.[0]; if(file) void editorUpload(file,"gallery");e.currentTarget.value="";}}/></label>
               </TabsContent>
-              <TabsContent value="styles" className="mt-4 space-y-4"><div className="space-y-2"><Label className="text-xs">Warna aksen</Label><Input type="color" value={editor.editorConfig.accentColor || "#9a7b4f"} onChange={(e)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, accentColor: e.target.value } })}/><Label className="text-xs">Warna latar</Label><Input type="color" value={editor.editorConfig.backgroundColor || "#faf7f0"} onChange={(e)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, backgroundColor: e.target.value } })}/><Label className="text-xs">Warna teks</Label><Input type="color" value={editor.editorConfig.textColor || "#30271f"} onChange={(e)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, textColor: e.target.value } })}/><Button variant="outline" size="sm" onClick={()=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, accentColor:"", backgroundColor:"", textColor:"" } })}>Reset warna template</Button></div><div className="space-y-2"><Label className="text-xs font-semibold">Pilih Style Card · Layanan</Label><div className="grid grid-cols-2 gap-2">{CARD_STYLES.map((style)=> <button type="button" key={style.value} aria-pressed={editor.editorConfig.sectionStyles.services===style.value} onClick={()=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, sectionStyles: { ...editor.editorConfig.sectionStyles, services: style.value } } })} className={`rounded-lg border p-2 text-left ${editor.editorConfig.sectionStyles.services===style.value ? "border-[#9a7b4f] ring-1 ring-[#9a7b4f]" : "border-border"}`}><span className={`mb-2 block h-12 border ${style.className}`}/><span className="block text-[11px] font-semibold">{style.label}</span><span className="block text-[9px] text-muted-foreground">{style.description}</span></button>)}</div><Label className="mt-3 block text-xs font-semibold">Style Card · Galeri</Label><div className="grid grid-cols-2 gap-2">{CARD_STYLES.map((style)=> <button type="button" key={style.value} aria-pressed={editor.editorConfig.sectionStyles.gallery===style.value} onClick={()=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, sectionStyles: { ...editor.editorConfig.sectionStyles, gallery: style.value } } })} className={`rounded-lg border p-2 text-left ${editor.editorConfig.sectionStyles.gallery===style.value ? "border-[#9a7b4f] ring-1 ring-[#9a7b4f]" : "border-border"}`}><span className={`mb-2 block h-12 border ${style.className}`}/><span className="block text-[11px] font-semibold">${style.label}</span></button>)}</div><Label className="mt-3 block text-xs font-semibold">Style Card · Produk</Label><Select value={editor.editorConfig.sectionStyles.products} onValueChange={(value)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, sectionStyles: { ...editor.editorConfig.sectionStyles, products: value as CardStyle } } })}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{CARD_STYLES.map((style)=><SelectItem key={style.value} value={style.value}>{style.label}</SelectItem>)}</SelectContent></Select></div></TabsContent>
+              <TabsContent value="styles" className="mt-4 space-y-4"><div className="space-y-2"><Label className="text-xs">Warna aksen</Label><Input type="color" value={editor.editorConfig.accentColor || "#9a7b4f"} onChange={(e)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, accentColor: e.target.value } })}/><Label className="text-xs">Warna latar</Label><Input type="color" value={editor.editorConfig.backgroundColor || "#faf7f0"} onChange={(e)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, backgroundColor: e.target.value } })}/><Label className="text-xs">Warna teks</Label><Input type="color" value={editor.editorConfig.textColor || "#30271f"} onChange={(e)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, textColor: e.target.value } })}/><Button variant="outline" size="sm" onClick={()=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, accentColor:"", backgroundColor:"", textColor:"" } })}>Reset warna template</Button></div><div className="space-y-2"><Label className="text-xs font-semibold">Pilih Style Card · Layanan</Label><div className="grid grid-cols-2 gap-2">{CARD_STYLES.map((style)=> <button type="button" key={style.value} aria-pressed={editor.editorConfig.sectionStyles.services===style.value} onClick={()=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, sectionStyles: { ...editor.editorConfig.sectionStyles, services: style.value } } })} className={`rounded-lg border p-2 text-left ${editor.editorConfig.sectionStyles.services===style.value ? "border-[#9a7b4f] ring-1 ring-[#9a7b4f]" : "border-border"}`}><CardStyleThumbnail style={style.value}/><span className="block text-[11px] font-semibold">{style.label}</span><span className="block text-[9px] text-muted-foreground">{style.description}</span></button>)}</div>{renderCardStylePicker("gallery", "Portfolio / galeri")}{renderCardStylePicker("products", "Produk / katalog")}</div></TabsContent>
               <TabsContent value="sections" className="mt-4 space-y-3">{Object.entries(editor.editorConfig.sectionVisibility).map(([key,enabled])=><div key={key} className="flex items-center justify-between rounded-md border p-2.5"><Label className="text-xs capitalize">{key}</Label><Switch checked={enabled} onCheckedChange={(checked)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, sectionVisibility: { ...editor.editorConfig.sectionVisibility, [key]: checked } } })}/></div>)}</TabsContent>
             </Tabs>
           </CardContent></Card>

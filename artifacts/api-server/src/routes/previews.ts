@@ -7,6 +7,8 @@ import { toWaNumber } from "../lib/phone";
 import { getCloudinaryConfig, signCloudinaryParams } from "../lib/cloudinary-upload";
 import { renderConstructionProfileHTML, renderFashionCatalogHTML, renderIndustryLandingHTML, renderPremiumProfileHTML, type PreviewPageData, type PreviewTemplateStyle } from "../lib/preview-html";
 import { generateLandingCopy } from "../lib/landing-copy";
+import { clientIp } from "../lib/rate-limit";
+import { allowLandingCopyGeneration } from "../lib/landing-copy-limit";
 
 const router = Router();
 /** Public prospect demo link. Must be answerable without auth. */
@@ -40,7 +42,7 @@ const EditorConfigSchema = z.object({
   heroTitle: z.string().trim().max(120).optional(), heroDescription: z.string().trim().max(420).optional(),
   heroButtonLabel: z.string().trim().max(28).optional(), secondaryButtonLabel: z.string().trim().max(28).optional(),
   whatsappLabel: z.string().trim().max(28).optional(), footerText: z.string().trim().max(180).optional(),
-  accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), backgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), textColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  accentColor: z.union([z.string().regex(/^#[0-9a-fA-F]{6}$/), z.literal("")]).optional(), backgroundColor: z.union([z.string().regex(/^#[0-9a-fA-F]{6}$/), z.literal("")]).optional(), textColor: z.union([z.string().regex(/^#[0-9a-fA-F]{6}$/), z.literal("")]).optional(),
   sectionVisibility: z.record(z.string().max(40), z.boolean()).optional(),
   sectionStyles: z.record(z.string().max(40), z.enum(CARD_STYLES)).optional(),
   galleryItems: z.array(z.object({ title: z.string().trim().max(55), caption: z.string().trim().max(120), imageUrl: z.string().url().optional() })).max(4).optional(),
@@ -558,6 +560,11 @@ router.post("/previews", async (req, res) => {
 router.post("/previews/generate-copy", async (req, res) => {
   const parsed = z.object({ prospectId: z.number().int().positive(), pageCategory: z.string().trim().min(1).max(80), templateStyle: z.enum(TEMPLATE_STYLES), notes: z.string().trim().max(700).optional(), services: z.string().trim().max(480).optional() }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+  const limit = allowLandingCopyGeneration(clientIp(req));
+  if (!limit.allowed) {
+    res.setHeader("Retry-After", String(limit.retryAfterSeconds));
+    return res.status(429).json({ error: `Batas generate copy AI tercapai. Coba lagi dalam ${limit.retryAfterSeconds} detik.` });
+  }
   try {
     const [prospect] = await db.select().from(prospectsTable).where(eq(prospectsTable.id, parsed.data.prospectId));
     if (!prospect) return res.status(404).json({ error: "Prospek tidak ditemukan." });

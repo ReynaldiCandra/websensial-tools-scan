@@ -9,6 +9,7 @@ const ALLOWED_ORIGIN = "https://dashboard.example.com";
 let app!: Express;
 let escapeHtml!: (value: string) => string;
 let clientIp!: (req: unknown) => string;
+let allowLandingCopyGeneration!: (ip: string) => { allowed: boolean; retryAfterSeconds: number };
 
 before(async () => {
   delete process.env.DATABASE_URL;
@@ -21,6 +22,7 @@ before(async () => {
   ({ default: app } = await import("../app"));
   ({ escapeHtml } = await import("../routes/previews"));
   ({ clientIp } = await import("../lib/rate-limit"));
+  ({ allowLandingCopyGeneration } = await import("../lib/landing-copy-limit"));
 });
 
 describe("preview HTML escaping", () => {
@@ -92,5 +94,23 @@ describe("clientIp", () => {
 
   it("falls back to the socket address", () => {
     assert.equal(clientIp(fakeReq({})), "127.0.0.1");
+  });
+});
+
+
+describe("AI landing-copy usage limit", () => {
+  it("allows five requests per hour for an IP, then returns a retry window", () => {
+    const ip = `203.0.113.${Math.floor(Math.random() * 200) + 1}`;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      assert.deepEqual(allowLandingCopyGeneration(ip), { allowed: true, retryAfterSeconds: 0 });
+    }
+    const blocked = allowLandingCopyGeneration(ip);
+    assert.equal(blocked.allowed, false);
+    assert.ok(blocked.retryAfterSeconds > 0 && blocked.retryAfterSeconds <= 3600);
+  });
+
+  it("tracks another IP in a separate limit bucket", () => {
+    const ip = `198.51.100.${Math.floor(Math.random() * 200) + 1}`;
+    assert.deepEqual(allowLandingCopyGeneration(ip), { allowed: true, retryAfterSeconds: 0 });
   });
 });

@@ -148,6 +148,32 @@ describeWithDb("public preview link", () => {
     assert.match(preview.text, /VISUAL DEMO/);
   });
 
+  it("creates a preview with editor colors reset and saves premium card styles", async () => {
+    const created = await request(app)
+      .post("/api/previews")
+      .set("x-api-key", API_KEY)
+      .send({
+        prospectId,
+        pageCategory: "Company Profile",
+        templateStyle: "company-modern",
+        editorConfig: {
+          accentColor: "",
+          backgroundColor: "",
+          textColor: "",
+          sectionStyles: { services: "glass", gallery: "elegant-classic" },
+        },
+      });
+    assert.equal(created.status, 201);
+    assert.equal(created.body.editorConfig.accentColor, "");
+
+    const preview = await request(app).get(created.body.previewUrl);
+    assert.equal(preview.status, 200);
+    assert.match(preview.text, /data-card-style="glass"/);
+    assert.match(preview.text, /data-card-style="elegant-classic"/);
+    assert.match(preview.text, /backdrop-filter:blur\(12px\)/);
+    assert.doesNotMatch(preview.text, /testimonial-card|article-card/);
+  });
+
   it("rejects unknown UI styles instead of silently accepting them", async () => {
     const res = await request(app)
       .post("/api/previews")

@@ -92,6 +92,45 @@ describe("preview landing page renderers", () => {
     }
   });
 
+  it("keeps article and testimonial sections out of all landing page templates", () => {
+    const templates = [
+      generatePreviewHTML(base),
+      renderFashionCatalogHTML(base),
+      renderConstructionProfileHTML(base),
+      renderPremiumProfileHTML(base, "company-modern"),
+      renderIndustryLandingHTML(base, "restaurant"),
+    ];
+
+    for (const html of templates) {
+      assert.doesNotMatch(html, /id="(?:testimoni|artikel)"/);
+      assert.doesNotMatch(html, /testimonial-card|article-card|IDE ARTIKEL/);
+    }
+  });
+
+  it("applies saved section visibility and copy to the construction renderer", () => {
+    const html = renderConstructionProfileHTML({
+      ...base,
+      editorConfig: {
+        heroTitle: "Judul Bisnis",
+        heroDescription: "Deskripsi bisnis yang ditulis sesuai fakta dan kategori perusahaan.",
+        sectionVisibility: { hero: false, trust: false, services: false, gallery: false, about: false, cta: false, footer: false },
+      },
+    });
+    assert.doesNotMatch(html, /class="hero"|class="trust-strip"|id="layanan"|id="proyek"|id="proses"|id="kontak"|<footer/);
+    assert.match(html, /KONSEP WEBSITE/);
+  });
+
+  it("applies selected card styles to industry service and gallery cards", () => {
+    const html = renderIndustryLandingHTML({
+      ...base,
+      editorConfig: { sectionStyles: { services: "glass", gallery: "elegant-classic" } },
+    }, "restaurant");
+    assert.match(html, /class="service-card" data-card-style="glass"/);
+    assert.match(html, /class="showcase-card" data-card-style="elegant-classic"/);
+    assert.match(html, /backdrop-filter:blur\(12px\)/);
+    assert.match(html, /border-color:#c8b58c/);
+  });
+
   it("uses image-led demo visuals with explicit demo ownership notes when no business photos are provided", () => {
     const html = generatePreviewHTML({ ...base, category: "Company Profile", pageCategory: "Company Profile", templateStyle: "company-modern" });
     assert.match(html, /images\.unsplash\.com/);

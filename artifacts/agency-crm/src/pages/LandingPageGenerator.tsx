@@ -44,7 +44,7 @@ export function LandingPageGenerator() {
 
       <div className="flex items-start gap-2 rounded-lg border border-blue-200/80 bg-blue-50/70 px-3 py-2.5 text-xs leading-5 text-blue-900" role="note">
         <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-700" />
-        <p>Generator saat ini membuat preview dari template dan aturan kategori yang sudah tersedia. Belum ada provider AI yang terhubung; mesin generator tidak diubah dalam redesign ini.</p>
+        <p>Copy awal dapat dibuat otomatis dengan AI. Tinjau kembali informasi, warna, dan aset sebelum membagikan preview.</p>
       </div>
 
       <Card className="ws-card min-w-0">
@@ -91,7 +91,7 @@ export function LandingPageGenerator() {
       </Card>
 
       {selectedProspect && !isLoading && !isError && (
-        <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.75fr)]">
+        <div className="flex min-w-0 flex-col gap-5">
           <div className="min-w-0">
             <PreviewGenerator
               prospectId={selectedProspect.id}
@@ -100,9 +100,9 @@ export function LandingPageGenerator() {
               phone={selectedProspect.phone}
             />
           </div>
-          <Card className="ws-card h-fit min-w-0 xl:sticky xl:top-6">
+          <Card className="ws-card h-fit min-w-0 lg:grid lg:grid-cols-[1fr_1fr] lg:items-center">
             <CardHeader className="pb-3"><CardTitle className="ws-section-title">Ringkasan bisnis</CardTitle><CardDescription>Informasi prospek yang digunakan generator.</CardDescription></CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div><p className="text-xs text-muted-foreground">Nama bisnis</p><p className="mt-1 break-words text-sm font-semibold">{selectedProspect.businessName}</p></div>
               <div><p className="text-xs text-muted-foreground">Kategori</p><p className="mt-1 text-sm font-medium">{selectedProspect.category}</p></div>
               <div><p className="text-xs text-muted-foreground">Nomor kontak</p><p className="mt-1 text-sm font-medium">{formatPhoneDisplay(selectedProspect.phone) || "Belum tersedia"}</p></div>

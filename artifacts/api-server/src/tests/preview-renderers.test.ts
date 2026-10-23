@@ -53,6 +53,30 @@ describe("preview landing page renderers", () => {
     assert.match(html, /A TABLE · A MOMENT · A STORY/); assert.match(html, /id="pilihan"/);
   });
 
+  it("applies the selected ivory palette consistently and adds a floating WhatsApp action", () => {
+    const html = generatePreviewHTML({
+      ...base,
+      pageCategory: "Company Profile",
+      templateStyle: "company-modern",
+      colorScheme: "ivory",
+      phone: "081234567890",
+    });
+    assert.match(html, /--preview-primary:#8a6e50/);
+    assert.match(html, /--preview-background:#faf7f0/);
+    assert.match(html, /--preview-text:#30271f/);
+    assert.match(html, /class="floating-whatsapp" href="https:\/\/wa\.me\/6281234567890/);
+    assert.match(html, /Hubungi .* melalui WhatsApp/);
+    assert.match(html, /--preview-light:#f1ebdf/);
+    assert.match(html, /\.hero h1,\.hero p,\.hero-inner h1,\.hero-inner p,\.hero \.eyebrow,\.hero-inner \.eyebrow\{color:#fff!important\}/);
+    assert.doesNotMatch(html, /--preview-primary:#059669|--preview-background:#ecfdf5/);
+  });
+
+  it("keeps a template's existing floating WhatsApp link without adding a duplicate", () => {
+    const html = generatePreviewHTML({ ...base, templateStyle: "fashion-catalog" });
+    assert.match(html, /class="floating-contact"/);
+    assert.doesNotMatch(html, /class="floating-whatsapp"/);
+  });
+
   it("personalizes industry logo and hero with safe Cloudinary assets only", () => {
     const html = renderIndustryLandingHTML({ ...base, logoUrl: "https://res.cloudinary.com/demo/image/upload/logo.png", heroImageUrl: "https://res.cloudinary.com/demo/image/upload/hero.png", galleryImageUrls: ["javascript:alert(1)"] }, "restaurant");
     assert.ok(html.includes('src="https://res.cloudinary.com/demo/image/upload/logo.png"'));

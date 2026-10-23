@@ -192,31 +192,64 @@ function getDefaultAbout(businessName: string, category: string): string {
 }
 
 
+function contrastText(hexColor: string): "#171717" | "#ffffff" {
+  const hex = hexColor.replace("#", "");
+  const channels = [0, 2, 4].map((offset) => parseInt(hex.slice(offset, offset + 2), 16) / 255);
+  const luminance = channels.map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+    .reduce((total, channel, index) => total + channel * [0.2126, 0.7152, 0.0722][index], 0);
+  return luminance > 0.179 ? "#171717" : "#ffffff";
+}
+
+function applyPreviewTheme(html: string, data: PreviewPageData & { templateStyle?: PreviewTemplateStyle }): string {
+  const baseTheme = COLOR_SCHEMES[data.colorScheme] ?? COLOR_SCHEMES.ivory;
+  const validHex = (value?: string) => Boolean(value && /^#[0-9a-fA-F]{6}$/.test(value));
+  const theme = {
+    ...baseTheme,
+    primary: validHex(data.editorConfig?.accentColor) ? data.editorConfig!.accentColor! : baseTheme.primary,
+    bg: validHex(data.editorConfig?.backgroundColor) ? data.editorConfig!.backgroundColor! : baseTheme.bg,
+    text: validHex(data.editorConfig?.textColor) ? data.editorConfig!.textColor! : baseTheme.text,
+    light: baseTheme.light,
+  };
+  const imageHero = data.templateStyle === "company-modern" && data.pageCategory === "Konstruksi & Renovasi"
+    || ["hotel-property", "tour-travel", "online-course", "restaurant"].includes(data.templateStyle ?? "");
+  const premiumHero = ["company-modern", "company-elegant", "company-minimal", "corporate-finance", "technology-saas", "creative-agency", "wellness-health", "conversion-landing"].includes(data.templateStyle ?? "");
+  const darkHero = imageHero || (premiumHero && data.templateStyle !== "company-minimal") || data.templateStyle === "classic";
+  const heroTextRules = darkHero
+    ? ".hero h1,.hero p,.hero-inner h1,.hero-inner p,.hero .eyebrow,.hero-inner .eyebrow{color:#fff!important}"
+    : ".hero h1,.hero p,.hero-inner h1,.hero-inner p{color:var(--preview-text)!important}.hero .eyebrow,.hero-inner .eyebrow{color:var(--preview-primary)!important}.hero{background-image:linear-gradient(135deg,var(--preview-background),color-mix(in srgb,var(--preview-background) 72%,var(--preview-primary)))!important}";
+  const themeCss = `:root{--preview-primary:${theme.primary};--preview-background:${theme.bg};--preview-light:${theme.light};--preview-text:${theme.text};--preview-on-primary:${contrastText(theme.primary)}}html,body{background:var(--preview-background)!important;color:var(--preview-text)!important}.site-header,.header,nav{background-color:var(--preview-background)!important}.demo-banner,.demo-bar,.demo{background:var(--preview-text)!important;color:var(--preview-background)!important}.demo-banner strong,.demo-bar strong,.demo b{color:var(--preview-primary)!important}.brand-mark,.brand-symbol,.brand-text strong,.brand-name,.section-heading h2,.category-info strong,.product-info h3,.nav-links a,.main-nav a,.section-tag{color:var(--preview-text)!important}.eyebrow,.section-tag,.trust-icon,.category-info i,.product-category,.service-number,.service-arrow{color:var(--preview-primary)!important}.hero{color:var(--preview-text)!important}.hero-copy{background:var(--preview-background)!important;color:var(--preview-text)!important}.hero-copy h1,.hero-copy>p{color:var(--preview-text)!important}.hero-copy .eyebrow{color:var(--preview-primary)!important}${heroTextRules}.nav-cta,.button,.hero-cta,.wa-btn,.floating-contact,.floating-whatsapp,.cta{background:var(--preview-primary)!important;color:var(--preview-on-primary)!important}.contact,.contact-box{background:var(--preview-primary)!important;color:var(--preview-on-primary)!important}.contact h2,.contact p,.contact-box h3,.contact-box p{color:var(--preview-on-primary)!important}.site-footer,footer{background:var(--preview-text)!important;color:var(--preview-background)!important}.site-footer strong,footer strong{color:var(--preview-background)!important}.trust-icon,.section-tag{background:var(--preview-light)!important}.feature-strip,.trust-strip,.showcase,.visuals,.project-section,.about{background:color-mix(in srgb,var(--preview-background) 90%,var(--preview-text))!important}.category-card,.product-card,.visual-card,.service-card{background-color:var(--preview-background)!important;border-color:color-mix(in srgb,var(--preview-primary) 18%,transparent)}.floating-whatsapp{position:fixed;right:18px;bottom:18px;z-index:100;display:inline-flex;min-height:46px;align-items:center;gap:9px;padding:0 17px;border:1px solid #ffffff66;border-radius:999px;font:700 13px Inter,system-ui,sans-serif;text-decoration:none;box-shadow:0 8px 24px #0003}.floating-whatsapp:hover{filter:brightness(1.08);transform:translateY(-1px)}@media(max-width:640px){.floating-whatsapp{right:12px;bottom:12px;min-height:42px;padding:0 14px;font-size:12px}}`;
+  let themedHtml = html.replace("</style>", `${themeCss}</style>`).replace("</head></head>", "</head>");
+  if (!/class="floating-contact"|class="floating-whatsapp"/.test(themedHtml)) {
+    const number = toWaNumber(data.phone);
+    if (number) {
+      const label = escapeHtml(data.editorConfig?.whatsappLabel || "WhatsApp");
+      const link = `https://wa.me/${number}?text=${encodeURIComponent(`Halo ${data.ownerName ?? data.businessName}, saya ingin bertanya tentang ${data.businessName}.`)}`;
+      themedHtml = themedHtml.replace("</body>", `<a class="floating-whatsapp" href="${link}" target="_blank" rel="noopener noreferrer" aria-label="Hubungi ${escapeHtml(data.businessName)} melalui WhatsApp"><span aria-hidden="true">◉</span>${label}</a></body>`);
+    }
+  }
+  return themedHtml;
+}
+
 export function generatePreviewHTML(
   data: PreviewPageData & { pageCategory?: string; templateStyle?: PreviewTemplateStyle },
 ): string {
+  let html: string;
   if (data.templateStyle === "fashion-catalog") {
-    return renderFashionCatalogHTML(data);
-  }
-  if ((data.pageCategory ?? data.category) === "Konstruksi & Renovasi" && data.templateStyle === "company-modern") {
-    return renderConstructionProfileHTML(data);
-  }
-  if (["hotel-property", "tour-travel", "online-course", "restaurant"].includes(data.templateStyle ?? "")) {
-    return renderIndustryLandingHTML(data, data.templateStyle as "hotel-property" | "tour-travel" | "online-course" | "restaurant");
-  }
-  if (
-    data.templateStyle === "company-modern" ||
-    data.templateStyle === "company-elegant" ||
-    data.templateStyle === "company-minimal" ||
-    data.templateStyle === "corporate-finance" ||
-    data.templateStyle === "technology-saas" ||
-    data.templateStyle === "creative-agency" ||
-    data.templateStyle === "wellness-health" ||
-    data.templateStyle === "conversion-landing"
+    html = renderFashionCatalogHTML(data);
+  } else if ((data.pageCategory ?? data.category) === "Konstruksi & Renovasi" && data.templateStyle === "company-modern") {
+    html = renderConstructionProfileHTML(data);
+  } else if (["hotel-property", "tour-travel", "online-course", "restaurant"].includes(data.templateStyle ?? "")) {
+    html = renderIndustryLandingHTML(data, data.templateStyle as "hotel-property" | "tour-travel" | "online-course" | "restaurant");
+  } else if (
+    data.templateStyle === "company-modern" || data.templateStyle === "company-elegant" || data.templateStyle === "company-minimal" ||
+    data.templateStyle === "corporate-finance" || data.templateStyle === "technology-saas" || data.templateStyle === "creative-agency" ||
+    data.templateStyle === "wellness-health" || data.templateStyle === "conversion-landing"
   ) {
-    return renderPremiumProfileHTML(data, data.templateStyle);
+    html = renderPremiumProfileHTML(data, data.templateStyle);
+  } else {
+    html = generateClassicPreviewHTML(data);
   }
-  return generateClassicPreviewHTML(data);
+  return applyPreviewTheme(html, data);
 }
 
 function generateClassicPreviewHTML(data: PreviewPageData): string {
@@ -632,6 +665,19 @@ router.post("/previews/:id/render", async (req, res) => {
 });
 
 // GET /api/previews/prospect/:id — list previews for a prospect
+router.delete("/previews/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "ID preview tidak valid." });
+  try {
+    const [deleted] = await db.delete(previewsTable).where(eq(previewsTable.id, id)).returning({ id: previewsTable.id });
+    if (!deleted) return res.status(404).json({ error: "Preview tidak ditemukan." });
+    return res.status(204).end();
+  } catch (error) {
+    req.log.error({ err: error }, "Failed to delete landing page preview");
+    return res.status(500).json({ error: "Preview gagal dihapus." });
+  }
+});
+
 router.get("/previews/prospect/:id", async (req, res) => {
   try {
     const id = Number(req.params.id);

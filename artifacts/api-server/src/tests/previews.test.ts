@@ -174,6 +174,27 @@ describeWithDb("public preview link", () => {
     assert.doesNotMatch(preview.text, /testimonial-card|article-card/);
   });
 
+  it("deletes a preview permanently and invalidates its public link", async () => {
+    const created = await request(app)
+      .post("/api/previews")
+      .set("x-api-key", API_KEY)
+      .send({ prospectId, pageCategory: "Company Profile", templateStyle: "company-modern" });
+    assert.equal(created.status, 201);
+
+    const deleted = await request(app)
+      .delete(`/api/previews/${created.body.id}`)
+      .set("x-api-key", API_KEY);
+    assert.equal(deleted.status, 204);
+
+    const publicPage = await request(app).get(created.body.previewUrl);
+    assert.equal(publicPage.status, 404);
+
+    const missing = await request(app)
+      .delete(`/api/previews/${created.body.id}`)
+      .set("x-api-key", API_KEY);
+    assert.equal(missing.status, 404);
+  });
+
   it("rejects unknown UI styles instead of silently accepting them", async () => {
     const res = await request(app)
       .post("/api/previews")

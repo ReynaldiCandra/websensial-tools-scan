@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ExternalLink, Loader2, Wand2, Copy, CheckCheck, Eye, Sparkles, Layers3, Palette, ArrowRight, Clock3, MessageSquare, ImagePlus, X } from "lucide-react";
+import { ExternalLink, Loader2, Wand2, Copy, CheckCheck, Eye, Sparkles, Layers3, Palette, ArrowRight, Clock3, MessageSquare, ImagePlus, X, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -145,6 +145,23 @@ const PALETTE_GROUPS: Record<string, string[]> = {
   "Landing Page High Konversi (Iklan Meta & Google Ads)": ["navy", "soft-blue", "white", "charcoal", "neon-accent"],
 };
 
+const PREVIEW_PALETTES: Record<string, { primary: string; background: string; text: string }> = {
+  ivory: { primary: "#8a6e50", background: "#faf7f0", text: "#30271f" }, beige: { primary: "#987856", background: "#f4eee5", text: "#392f25" },
+  taupe: { primary: "#7c6657", background: "#f2eeea", text: "#302721" }, brown: { primary: "#795548", background: "#f5eee9", text: "#34241d" },
+  black: { primary: "#c6a76d", background: "#171717", text: "#f8f5ef" }, white: { primary: "#24466b", background: "#ffffff", text: "#1f2937" },
+  navy: { primary: "#284c77", background: "#f2f6fb", text: "#162a43" }, charcoal: { primary: "#d0b477", background: "#262a2f", text: "#f6f4ef" },
+  "dark-slate": { primary: "#8ab4d6", background: "#1e293b", text: "#f1f5f9" }, "soft-blue": { primary: "#477ba8", background: "#f2f7fb", text: "#203448" },
+  "neon-accent": { primary: "#c6f36b", background: "#17191d", text: "#f7f8f4" }, "sage-green": { primary: "#607b65", background: "#f2f5f0", text: "#26352a" },
+  "soft-rose": { primary: "#ad6878", background: "#fbf3f4", text: "#38272b" }, indigo: { primary: "#4f46e5", background: "#eef2ff", text: "#1e1b4b" },
+  emerald: { primary: "#059669", background: "#ecfdf5", text: "#064e3b" }, amber: { primary: "#d97706", background: "#fffbeb", text: "#78350f" },
+  rose: { primary: "#e11d48", background: "#fff1f2", text: "#881337" }, violet: { primary: "#7c3aed", background: "#f5f3ff", text: "#2e1065" }, slate: { primary: "#475569", background: "#f8fafc", text: "#0f172a" },
+};
+
+function defaultColorFor(pageCategory: string): string {
+  const recommended = colorsForCategory(pageCategory)[0]?.value ?? "ivory";
+  return COLOR_OPTIONS.some((option) => option.value === recommended) ? recommended : "ivory";
+}
+
 const COLOR_OPTIONS = [
   { value: "ivory", label: "Ivory", color: "#f7f3e9" },
   { value: "beige", label: "Beige", color: "#e8dcc8" },
@@ -198,17 +215,25 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
   const [pageCategory, setPageCategory] = useState(
     CATEGORY_OPTIONS.includes(category) ? category : "Company Profile",
   );
-  const [colorScheme, setColorScheme] = useState(() => {
-    const firstRecommended = colorsForCategory(CATEGORY_OPTIONS.includes(category) ? category : "Company Profile")[0]?.value ?? "indigo";
-    return COLOR_OPTIONS.some((option) => option.value === firstRecommended) ? firstRecommended : "ivory";
-  });
+  const [colorScheme, setColorScheme] = useState(() => defaultColorFor(CATEGORY_OPTIONS.includes(category) ? category : "Company Profile"));
   const [initialCardStyle, setInitialCardStyle] = useState<CardStyle>("modern-minimal");
+  const palette = PREVIEW_PALETTES[colorScheme] ?? PREVIEW_PALETTES.ivory;
+  const previewEditorConfig = (config: EditorState["editorConfig"], scheme = colorScheme): EditorState["editorConfig"] => {
+    const selectedPalette = PREVIEW_PALETTES[scheme] ?? PREVIEW_PALETTES.ivory;
+    return {
+      ...config,
+      accentColor: config.accentColor || selectedPalette.primary,
+      backgroundColor: config.backgroundColor || selectedPalette.background,
+      textColor: config.textColor || selectedPalette.text,
+    };
+  };
   const [templateStyle, setTemplateStyle] = useState(() => defaultTemplateFor(category));
   const supportsLogoUpload = templateStyle.startsWith("company-") || templateStyle === "corporate-finance" || templateStyle === "technology-saas" || templateStyle === "creative-agency" || templateStyle === "wellness-health" || templateStyle === "conversion-landing";
   const supportsBusinessAssets = templateStyle !== "classic";
   const showAssetControls = supportsBusinessAssets || supportsLogoUpload;
   const [generating, setGenerating] = useState(false);
   const [previews, setPreviews] = useState<PreviewRecord[]>([]);
+  const [deletingPreviewId, setDeletingPreviewId] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [activePreview, setActivePreview] = useState<PreviewRecord | null>(null);
@@ -246,7 +271,7 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
 
   const defaultEditorConfig = (): EditorState["editorConfig"] => ({
     heroTitle: "", heroDescription: "", heroButtonLabel: "", secondaryButtonLabel: "", whatsappLabel: "", footerText: "",
-    accentColor: "", backgroundColor: "", textColor: "",
+    accentColor: palette.primary, backgroundColor: palette.background, textColor: palette.text,
     sectionVisibility: { hero: true, trust: true, categories: true, collection: true, products: true, services: true, gallery: true, about: true, cta: true, footer: true },
     sectionStyles: { services: initialCardStyle, gallery: initialCardStyle, products: initialCardStyle },
     galleryItems: [],
@@ -271,7 +296,12 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
     },
   });
 
-  useEffect(() => { setTagline(""); setServices(""); setAboutText(""); setAssets({ logo: "", hero: "", gallery: [] }); setPageCategory(CATEGORY_OPTIONS.includes(category) ? category : "Company Profile"); setTemplateStyle(defaultTemplateFor(category)); }, [prospectId, category]);
+  useEffect(() => {
+    const nextCategory = CATEGORY_OPTIONS.includes(category) ? category : "Company Profile";
+    const nextColor = defaultColorFor(nextCategory);
+    setTagline(""); setServices(""); setAboutText(""); setAssets({ logo: "", hero: "", gallery: [] });
+    setPageCategory(nextCategory); setTemplateStyle(defaultTemplateFor(category)); setColorScheme(nextColor);
+  }, [prospectId, category]);
 
   const requestLandingCopy = async (options: { notes?: string; services?: string; pageCategory?: string; templateStyle?: string } = {}) => {
     const response = await apiFetch("/api/previews/generate-copy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prospectId, pageCategory: options.pageCategory ?? pageCategory, templateStyle: options.templateStyle ?? templateStyle, notes: options.notes ?? (aiNotes || undefined), services: options.services ?? (draftServices || undefined) }) });
@@ -316,7 +346,7 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
           logoUrl: assets.logo || undefined,
           heroImageUrl: assets.hero || undefined,
           galleryImageUrls: assets.gallery,
-          editorConfig: { ...editorConfig, galleryItems: editorConfig.galleryItems.map((item) => ({ ...item, imageUrl: item.imageUrl || undefined })) },
+          editorConfig: { ...editorConfig, accentColor: palette.primary, backgroundColor: palette.background, textColor: palette.text, sectionStyles: { ...editorConfig.sectionStyles, services: initialCardStyle, gallery: initialCardStyle, products: initialCardStyle }, galleryItems: editorConfig.galleryItems.map((item) => ({ ...item, imageUrl: item.imageUrl || undefined })) },
         }),
       });
       const data = await res.json();
@@ -409,7 +439,7 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
 
   const payloadForEditor = () => {
     if (!editor) throw new Error("Pilih preview yang akan diedit.");
-    return { ...editor, editorConfig: { ...editor.editorConfig, galleryItems: editor.editorConfig.galleryItems.map((item) => ({ ...item, imageUrl: item.imageUrl || undefined })) } };
+    return { ...editor, editorConfig: { ...previewEditorConfig(editor.editorConfig, editor.colorScheme), galleryItems: editor.editorConfig.galleryItems.map((item) => ({ ...item, imageUrl: item.imageUrl || undefined })) } };
   };
 
   const refreshLivePreview = async () => {
@@ -424,6 +454,25 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
 
   useEffect(() => { if (activePreview && editor) void refreshLivePreview(); }, [activePreview?.id, editor]);
 
+  const deletePreview = async (preview: PreviewRecord) => {
+    if (!window.confirm(`Hapus preview ${preview.pageCategory ?? businessName} secara permanen? Link publiknya tidak akan berlaku lagi.`)) return;
+    setDeletingPreviewId(preview.id);
+    try {
+      const response = await apiFetch(`/api/previews/${preview.id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.error ?? "Preview gagal dihapus.");
+      }
+      setPreviews((current) => current.filter((item) => item.id !== preview.id));
+      if (activePreview?.id === preview.id) {
+        setActivePreview(null); setEditor(null); setSavedEditor(null); setPreviewHtml("");
+      }
+      toast({ title: "Preview dihapus", description: "Preview dan link publiknya telah dihapus permanen." });
+    } catch (error) {
+      toast({ title: "Gagal menghapus preview", description: error instanceof Error ? error.message : "Terjadi kesalahan.", variant: "destructive" });
+    } finally { setDeletingPreviewId(null); }
+  };
+
   const saveEditor = async () => {
     if (!activePreview || !editor) return;
     setEditorSaving(true); setEditorError("");
@@ -434,8 +483,11 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
       setSavedEditor(editor);
       setActivePreview((current) => current ? { ...current, token: data.token } : current);
       toast({ title: "Perubahan tersimpan", description: "URL preview tetap sama dan sudah menampilkan versi tersimpan." });
-    } catch (error) { setEditorError(error instanceof Error ? error.message : "Gagal menyimpan perubahan."); }
-    finally { setEditorSaving(false); }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Gagal menyimpan perubahan.";
+      setEditorError(message);
+      toast({ title: "Gagal menyimpan perubahan", description: message, variant: "destructive" });
+    } finally { setEditorSaving(false); }
   };
 
   const resetEditor = () => {
@@ -485,7 +537,7 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
 
   return (
     <div className="min-w-0 space-y-5">
-      <Card className="ws-card min-w-0 overflow-hidden">
+      {!activePreview && <Card className="ws-card min-w-0 overflow-hidden">
         <CardHeader className="border-b border-border/70 bg-gradient-to-r from-primary/[0.055] to-transparent p-4 sm:p-5">
           <div className="flex items-start gap-3">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Sparkles className="h-5 w-5" /></span>
@@ -505,8 +557,8 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
                 <Select value={pageCategory} onValueChange={(value) => {
                   setPageCategory(value);
                   setTemplateStyle(defaultTemplateFor(value));
-                  const recommended = colorsForCategory(value)[0]?.value ?? "indigo";
-                  setColorScheme(COLOR_OPTIONS.some((option) => option.value === recommended) ? recommended : "ivory");
+                  const nextColor = defaultColorFor(value);
+                  setColorScheme(nextColor);
                 }}>
                   <SelectTrigger className="h-10 rounded-lg text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>{CATEGORY_OPTIONS.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}</SelectContent>
@@ -557,12 +609,12 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
             </Button>
           </div>
         </CardContent>
-      </Card>
+      </Card>}
 
       {editor && activePreview && <section className="overflow-hidden rounded-2xl border border-[#e9e4dc] bg-[#faf9f6] shadow-sm" aria-label="Editor landing page">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e9e4dc] bg-white px-4 py-3 sm:px-5"><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[.16em] text-[#9a7b4f]">Studio editor · {activePreview.pageCategory ?? pageCategory}</p><h2 className="mt-1 truncate text-base font-semibold">Edit preview {businessName}</h2><p className="mt-1 text-[11px] text-muted-foreground">{dirty ? "Ada perubahan yang belum disimpan" : `Tersimpan ${new Date((savedEditor as EditorState & { updatedAt?: string })?.updatedAt ?? activePreview.createdAt).toLocaleString("id-ID")}`}</p></div><div className="flex flex-wrap items-center gap-2"><Button size="sm" variant="outline" onClick={resetEditor} disabled={!dirty}>Reset</Button><Button size="sm" variant="outline" onClick={() => void editorShare()}><ExternalLink className="mr-1.5 h-3.5 w-3.5"/>Bagikan</Button><Button size="sm" onClick={() => void saveEditor()} disabled={!dirty || editorSaving}>{editorSaving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin"/> : <CheckCheck className="mr-1.5 h-3.5 w-3.5"/>}Simpan Perubahan</Button></div></div>
-        <div className="grid min-w-0 gap-4 p-3 lg:grid-cols-[minmax(250px,.72fr)_minmax(0,1.6fr)_minmax(230px,.72fr)] lg:p-4">
-          <Card className="h-fit min-w-0 border-[#ebe6df] shadow-none"><CardHeader className="pb-3"><CardTitle className="text-sm">Konten website</CardTitle><CardDescription>Edit teks sebelum dikirim kepada klien.</CardDescription></CardHeader><CardContent>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e9e4dc] bg-white px-4 py-3 sm:px-5"><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[.16em] text-[#9a7b4f]">Studio editor · {activePreview.pageCategory ?? pageCategory}</p><h2 className="mt-1 truncate text-base font-semibold">Edit preview {businessName}</h2><p className="mt-1 text-[11px] text-muted-foreground">{dirty ? "Ada perubahan yang belum disimpan" : `Tersimpan ${new Date((savedEditor as EditorState & { updatedAt?: string })?.updatedAt ?? activePreview.createdAt).toLocaleString("id-ID")}`}</p></div><div className="flex flex-wrap items-center gap-2"><Button size="sm" variant="outline" onClick={() => { setActivePreview(null); setEditor(null); setSavedEditor(null); setPreviewHtml(""); }}><X className="mr-1.5 h-3.5 w-3.5"/>Kembali ke generator</Button><Button size="sm" variant="outline" onClick={resetEditor} disabled={!dirty}>Reset</Button><Button size="sm" variant="outline" onClick={() => void editorShare()}><ExternalLink className="mr-1.5 h-3.5 w-3.5"/>Bagikan</Button><Button size="sm" onClick={() => void saveEditor()} disabled={!dirty || editorSaving}>{editorSaving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin"/> : <CheckCheck className="mr-1.5 h-3.5 w-3.5"/>}Simpan Perubahan</Button></div></div>
+        <div className="grid min-w-0 items-start gap-4 p-3 lg:grid-cols-[minmax(220px,.8fr)_minmax(0,1.45fr)_minmax(220px,.75fr)] lg:p-4">
+          <Card className="h-fit min-w-0 border-[#ebe6df] shadow-none lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto"><CardHeader className="pb-3"><CardTitle className="text-sm">Konten website</CardTitle><CardDescription>Edit teks sebelum dikirim kepada klien.</CardDescription></CardHeader><CardContent>
             <Tabs defaultValue="content"><TabsList className="grid h-auto w-full grid-cols-4 bg-[#f5f2ed] p-1"><TabsTrigger value="content" className="px-1.5 text-[10px]">Konten</TabsTrigger><TabsTrigger value="images" className="px-1.5 text-[10px]">Gambar</TabsTrigger><TabsTrigger value="styles" className="px-1.5 text-[10px]">Style</TabsTrigger><TabsTrigger value="sections" className="px-1.5 text-[10px]">Bagian</TabsTrigger></TabsList>
               <TabsContent value="content" className="mt-4 space-y-3">
                 <div className="rounded-xl border border-[#eadfc9] bg-[#fbf7ee] p-3"><Label htmlFor="ai-copy-notes" className="text-xs font-semibold">Generate copy dengan AI</Label><Textarea id="ai-copy-notes" value={aiNotes} onChange={(e) => setAiNotes(e.target.value)} className="mt-2 min-h-16 bg-white text-xs" placeholder="Keunikan/kata kunci yang diketahui pemilik bisnis (opsional)"/><Button type="button" onClick={() => void generateCopy()} disabled={aiGenerating} className="mt-2 h-9 w-full gap-2 bg-[#9a7b4f] hover:bg-[#806440]">{aiGenerating ? <Loader2 className="h-4 w-4 animate-spin"/> : <Sparkles className="h-4 w-4"/>}Generate copy AI</Button><p className="mt-2 text-[10px] leading-4 text-muted-foreground">AI membuat draft dari data prospek dan input Anda. Periksa klaim/fakta sebelum publish.</p></div>
@@ -577,12 +629,12 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
                 {editor.galleryImageUrls.map((url,index) => <div className="flex items-center gap-2 rounded-md border p-2" key={`${url}-${index}`}><img src={url} className="h-12 w-12 rounded object-cover" alt={`Galeri ${index+1}`}/><span className="min-w-0 flex-1 truncate text-xs">Foto galeri {index+1}</span><Button size="sm" variant="ghost" onClick={() => setEditor({ ...editor, galleryImageUrls: editor.galleryImageUrls.filter((_,i)=>i!==index), editorConfig: { ...editor.editorConfig, galleryItems: editor.editorConfig.galleryItems.filter((_,i)=>i!==index) } })}>Hapus</Button></div>)}
                 <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed p-3 text-xs text-muted-foreground"><ImagePlus className="h-4 w-4"/>Tambah gambar galeri (maks. 3)<input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,image/avif" disabled={editor.galleryImageUrls.length>=3} onChange={(e)=>{const file=e.target.files?.[0]; if(file) void editorUpload(file,"gallery");e.currentTarget.value="";}}/></label>
               </TabsContent>
-              <TabsContent value="styles" className="mt-4 space-y-4"><div className="space-y-2"><Label className="text-xs">Warna aksen</Label><Input type="color" value={editor.editorConfig.accentColor || "#9a7b4f"} onChange={(e)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, accentColor: e.target.value } })}/><Label className="text-xs">Warna latar</Label><Input type="color" value={editor.editorConfig.backgroundColor || "#faf7f0"} onChange={(e)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, backgroundColor: e.target.value } })}/><Label className="text-xs">Warna teks</Label><Input type="color" value={editor.editorConfig.textColor || "#30271f"} onChange={(e)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, textColor: e.target.value } })}/><Button variant="outline" size="sm" onClick={()=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, accentColor:"", backgroundColor:"", textColor:"" } })}>Reset warna template</Button></div><div className="space-y-2"><Label className="text-xs font-semibold">Pilih Style Card · Layanan</Label><div className="grid grid-cols-2 gap-2">{CARD_STYLES.map((style)=> <button type="button" key={style.value} aria-pressed={editor.editorConfig.sectionStyles.services===style.value} onClick={()=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, sectionStyles: { ...editor.editorConfig.sectionStyles, services: style.value } } })} className={`rounded-lg border p-2 text-left ${editor.editorConfig.sectionStyles.services===style.value ? "border-[#9a7b4f] ring-1 ring-[#9a7b4f]" : "border-border"}`}><CardStyleThumbnail style={style.value}/><span className="block text-[11px] font-semibold">{style.label}</span><span className="block text-[9px] text-muted-foreground">{style.description}</span></button>)}</div>{renderCardStylePicker("gallery", "Portfolio / galeri")}{renderCardStylePicker("products", "Produk / katalog")}</div></TabsContent>
+              <TabsContent value="styles" className="mt-4 space-y-4"><div className="space-y-2"><Label className="text-xs">Warna aksen</Label><Input type="color" value={editor.editorConfig.accentColor || PREVIEW_PALETTES[editor.colorScheme]?.primary || PREVIEW_PALETTES.ivory.primary} onChange={(e)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, accentColor: e.target.value } })}/><Label className="text-xs">Warna latar</Label><Input type="color" value={editor.editorConfig.backgroundColor || PREVIEW_PALETTES[editor.colorScheme]?.background || PREVIEW_PALETTES.ivory.background} onChange={(e)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, backgroundColor: e.target.value } })}/><Label className="text-xs">Warna teks</Label><Input type="color" value={editor.editorConfig.textColor || PREVIEW_PALETTES[editor.colorScheme]?.text || PREVIEW_PALETTES.ivory.text} onChange={(e)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, textColor: e.target.value } })}/><Button variant="outline" size="sm" onClick={()=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, accentColor:"", backgroundColor:"", textColor:"" } })}>Reset warna template</Button></div><div className="space-y-2"><Label className="text-xs font-semibold">Pilih Style Card · Layanan</Label><div className="grid grid-cols-2 gap-2">{CARD_STYLES.map((style)=> <button type="button" key={style.value} aria-pressed={editor.editorConfig.sectionStyles.services===style.value} onClick={()=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, sectionStyles: { ...editor.editorConfig.sectionStyles, services: style.value } } })} className={`rounded-lg border p-2 text-left ${editor.editorConfig.sectionStyles.services===style.value ? "border-[#9a7b4f] ring-1 ring-[#9a7b4f]" : "border-border"}`}><CardStyleThumbnail style={style.value}/><span className="block text-[11px] font-semibold">{style.label}</span><span className="block text-[9px] text-muted-foreground">{style.description}</span></button>)}</div>{renderCardStylePicker("gallery", "Portfolio / galeri")}{renderCardStylePicker("products", "Produk / katalog")}</div></TabsContent>
               <TabsContent value="sections" className="mt-4 space-y-3">{Object.entries(editor.editorConfig.sectionVisibility).map(([key,enabled])=><div key={key} className="flex items-center justify-between rounded-md border p-2.5"><Label className="text-xs capitalize">{key}</Label><Switch checked={enabled} onCheckedChange={(checked)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, sectionVisibility: { ...editor.editorConfig.sectionVisibility, [key]: checked } } })}/></div>)}</TabsContent>
             </Tabs>
           </CardContent></Card>
-          <Card className="min-w-0 overflow-hidden border-[#ebe6df] shadow-none"><CardHeader className="flex-row items-center justify-between space-y-0 pb-3"><CardTitle className="text-sm">Live preview {dirty && <span className="ml-2 text-[10px] font-normal text-amber-700">· Belum disimpan</span>}</CardTitle><div className="flex gap-1"><Button size="sm" variant={viewport==="desktop"?"default":"outline"} onClick={()=>setViewport("desktop")}>Desktop</Button><Button size="sm" variant={viewport==="mobile"?"default":"outline"} onClick={()=>setViewport("mobile")}>Mobile</Button></div></CardHeader><CardContent className="p-2 pt-0"><div className="flex min-h-[460px] justify-center overflow-auto rounded-lg border bg-[#ece9e3] p-2"><iframe title={`Live preview ${businessName}`} srcDoc={previewHtml} sandbox="allow-forms allow-popups allow-popups-to-escape-sandbox" className={`min-h-[700px] border-0 bg-white shadow-md ${viewport==="mobile"?"w-[390px] max-w-full rounded-[28px] border-[8px] border-slate-800":"w-full"}`}/></div></CardContent></Card>
-          <Card className="h-fit min-w-0 border-[#ebe6df] shadow-none"><CardHeader className="pb-3"><CardTitle className="text-sm">Pengaturan halaman</CardTitle><CardDescription>Perubahan terlihat langsung di preview.</CardDescription></CardHeader><CardContent className="space-y-3"><div><Label className="text-xs">Kategori</Label><p className="mt-1 text-sm font-medium">{activePreview.pageCategory ?? pageCategory}</p></div><div><Label className="text-xs">Style template</Label><p className="mt-1 text-sm">{TEMPLATE_OPTIONS.find(x=>x.value===activePreview.templateStyle)?.label ?? activePreview.templateStyle}</p></div><div className="rounded-lg border p-3"><Label className="text-xs">URL preview tetap</Label><code className="mt-2 block break-all text-[10px]">{window.location.origin}/preview/{activePreview.token}</code></div><Button variant="outline" className="w-full" onClick={()=>void refreshLivePreview()}><Eye className="mr-2 h-4 w-4"/>Perbarui Live Preview</Button></CardContent></Card>
+          <Card className="min-w-0 overflow-hidden border-[#ebe6df] shadow-none lg:col-start-2 lg:row-start-1"><CardHeader className="flex-row items-center justify-between space-y-0 pb-3"><CardTitle className="text-sm">Live preview {dirty && <span className="ml-2 text-[10px] font-normal text-amber-700">· Belum disimpan</span>}</CardTitle><div className="flex gap-1"><Button size="sm" variant={viewport==="desktop"?"default":"outline"} onClick={()=>setViewport("desktop")}>Desktop</Button><Button size="sm" variant={viewport==="mobile"?"default":"outline"} onClick={()=>setViewport("mobile")}>Mobile</Button></div></CardHeader><CardContent className="p-2 pt-0"><div className="flex min-h-[460px] justify-center overflow-auto rounded-lg border bg-[#ece9e3] p-2"><iframe title={`Live preview ${businessName}`} srcDoc={previewHtml} sandbox="allow-forms allow-popups allow-popups-to-escape-sandbox" className={`h-[min(78vh,900px)] min-h-[520px] border-0 bg-white shadow-md ${viewport==="mobile"?"w-[390px] max-w-full rounded-[28px] border-[8px] border-slate-800":"w-full"}`}/></div></CardContent></Card>
+          <Card className="h-fit min-w-0 border-[#ebe6df] shadow-none lg:col-start-3 lg:row-start-1 lg:sticky lg:top-4"><CardHeader className="pb-3"><CardTitle className="text-sm">Pengaturan halaman</CardTitle><CardDescription>Perubahan terlihat langsung di preview.</CardDescription></CardHeader><CardContent className="space-y-3"><div><Label className="text-xs">Kategori</Label><p className="mt-1 text-sm font-medium">{activePreview.pageCategory ?? pageCategory}</p></div><div><Label className="text-xs">Style template</Label><p className="mt-1 text-sm">{TEMPLATE_OPTIONS.find(x=>x.value===activePreview.templateStyle)?.label ?? activePreview.templateStyle}</p></div><div className="rounded-lg border p-3"><Label className="text-xs">URL preview tetap</Label><code className="mt-2 block break-all text-[10px]">{window.location.origin}/preview/{activePreview.token}</code></div><Button variant="outline" className="w-full" onClick={()=>void refreshLivePreview()}><Eye className="mr-2 h-4 w-4"/>Perbarui Live Preview</Button></CardContent></Card>
         </div>
       </section>}
       {editorLoading && <div className="rounded-lg border p-4 text-xs text-muted-foreground" role="status"><Loader2 className="mr-2 inline h-4 w-4 animate-spin"/>Memuat editor preview…</div>}
@@ -603,7 +655,8 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
                 <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:flex-wrap lg:w-auto lg:shrink-0">
                   <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-lg" onClick={() => void openEditor(preview)}><Wand2 className="h-3.5 w-3.5"/>Edit</Button><Button size="sm" className="h-9 gap-1.5 rounded-lg" onClick={() => openPreview(preview.token)}><ExternalLink className="h-3.5 w-3.5" />Buka Preview</Button>
                   <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-lg" onClick={() => copyLink(preview.token)}>{copied === preview.token ? <CheckCheck className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}{copied === preview.token ? "Tersalin" : "Salin Link"}</Button>
-                  <Button size="sm" variant="outline" className="col-span-2 h-9 gap-1.5 rounded-lg border-emerald-200 text-emerald-700 hover:bg-emerald-50 sm:col-span-1" onClick={() => waShare(preview.token)}><MessageSquare className="h-3.5 w-3.5" />Kirim WhatsApp</Button>
+                  <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-lg border-emerald-200 text-emerald-700 hover:bg-emerald-50" onClick={() => waShare(preview.token)}><MessageSquare className="h-3.5 w-3.5" />Kirim WhatsApp</Button>
+                  <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-lg border-destructive/30 text-destructive hover:bg-destructive/5" aria-label={`Hapus preview ${preview.pageCategory ?? businessName}`} disabled={deletingPreviewId === preview.id} onClick={() => void deletePreview(preview)}>{deletingPreviewId === preview.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}Hapus</Button>
                 </div>
               </CardContent>
             </Card>;

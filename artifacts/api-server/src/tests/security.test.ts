@@ -46,8 +46,26 @@ describe("security headers", () => {
     assert.equal(res.headers["x-content-type-options"], "nosniff");
     assert.equal(res.headers["x-frame-options"], "SAMEORIGIN");
     assert.equal(res.headers["referrer-policy"], "strict-origin-when-cross-origin");
+    assert.equal(res.headers["permissions-policy"], "camera=(), microphone=(), geolocation=()");
+    assert.equal(res.headers["content-security-policy"], "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+    assert.equal(res.headers["strict-transport-security"], "max-age=63072000");
     assert.equal(res.headers["cache-control"], "no-store");
     assert.equal(res.headers["x-powered-by"], undefined);
+  });
+});
+
+describe("security header environment", () => {
+  it("does not send HSTS when the API is running outside production", async () => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = "test";
+    try {
+      const res = await request(app).get("/api/healthz");
+      assert.equal(res.status, 200);
+      assert.equal(res.headers["strict-transport-security"], undefined);
+      assert.ok(res.headers["content-security-policy"]);
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
   });
 });
 

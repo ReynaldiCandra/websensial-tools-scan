@@ -759,6 +759,9 @@ publicPreviewsRouter.get("/preview/:token", async (req, res) => {
     });
 
     res.setHeader("Content-Type", "text/html; charset=utf-8");
+    if (process.env.NODE_ENV === "production") {
+      res.setHeader("Strict-Transport-Security", "max-age=63072000");
+    }
     // Defense in depth: escaping already removes markup from business data, but
     // this page is public and needs no script at all, so even a missed escape
     // cannot execute JavaScript here.

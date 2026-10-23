@@ -69,6 +69,10 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  res.setHeader("Content-Security-Policy", "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+  if (process.env.NODE_ENV === "production") {
+    res.setHeader("Strict-Transport-Security", "max-age=63072000");
+  }
   // CRM data must not be cached by the browser or an intermediary.
   if (!/^\/(api\/)?preview\//.test(req.path)) {
     res.setHeader("Cache-Control", "no-store");

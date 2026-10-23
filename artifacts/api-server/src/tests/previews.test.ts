@@ -106,6 +106,10 @@ describeWithDb("public preview link", () => {
     // Scraped business names are escaped, never rendered as markup.
     assert.match(res.text, /Warung Uji &lt;Preview&gt;/);
     assert.match(String(res.headers["content-security-policy"]), /default-src 'none'/);
+    assert.equal(res.headers["strict-transport-security"], "max-age=63072000");
+    assert.equal(res.headers["x-content-type-options"], "nosniff");
+    assert.equal(res.headers["referrer-policy"], "strict-origin-when-cross-origin");
+    assert.equal(res.headers["permissions-policy"], "camera=(), microphone=(), geolocation=()");
 
     const [row] = await db.select().from(previewsTable).where(eq(previewsTable.token, token));
     assert.equal(row.viewCount, 1);

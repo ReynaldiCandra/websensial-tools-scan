@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { renderConstructionProfileHTML, renderFashionCatalogHTML, renderIndustryLandingHTML, type PreviewPageData } from "../lib/preview-html";
+import { renderConstructionProfileHTML, renderFashionCatalogHTML, renderIndustryLandingHTML, renderPremiumProfileHTML, type PreviewPageData } from "../lib/preview-html";
 import { generatePreviewHTML, previewContentSecurityPolicy } from "../routes/previews";
 
 const base: PreviewPageData = {
@@ -63,6 +63,41 @@ describe("preview landing page renderers", () => {
   it("shows an uploaded Cloudinary logo in the company profile header", () => {
     const html = generatePreviewHTML({ ...base, category: "Company Profile", pageCategory: "Company Profile", templateStyle: "company-modern", logoUrl: "https://res.cloudinary.com/demo/image/upload/company-logo.png" });
     assert.match(html, /class="brand-logo" src="https:\/\/res\.cloudinary\.com\/demo\/image\/upload\/company-logo\.png" alt="Logo Studio Uji &lt;Demo&gt;"/);
+  });
+
+  it("renders image-led premium profile templates with safe uploaded hero and gallery assets", () => {
+    const styles = ["company-modern", "company-elegant", "company-minimal", "corporate-finance", "technology-saas", "creative-agency", "wellness-health", "conversion-landing"] as const;
+    for (const style of styles) {
+      const html = renderPremiumProfileHTML({
+        ...base,
+        category: "Layanan profesional",
+        pageCategory: "Teknologi & SaaS",
+        heroImageUrl: "https://res.cloudinary.com/demo/image/upload/hero.jpg",
+        galleryImageUrls: ["https://res.cloudinary.com/demo/image/upload/one.jpg", "javascript:alert(1)", "https://res.cloudinary.com/demo/image/upload/three.jpg"],
+        services: ["Strategi", "Implementasi", "Dukungan", "Integrasi", "Analitik", "Konsultasi", "Di luar batas"],
+      }, style);
+
+      assert.match(html, /class="hero-visual"/);
+      assert.match(html, /class="visual-grid"/);
+      assert.match(html, /VISUAL DEMO/);
+      assert.match(html, /FOTO BISNIS/);
+      assert.match(html, /hero\.jpg/);
+      assert.match(html, /one\.jpg/);
+      assert.match(html, /three\.jpg/);
+      assert.doesNotMatch(html, /javascript:alert/);
+      assert.doesNotMatch(html, /Di luar batas/);
+      assert.match(html, /@media\(max-width:700px\)/);
+      assert.match(html, /wa\.me\/6281234567890/);
+      assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/i);
+    }
+  });
+
+  it("uses image-led demo visuals with explicit demo ownership notes when no business photos are provided", () => {
+    const html = generatePreviewHTML({ ...base, category: "Company Profile", pageCategory: "Company Profile", templateStyle: "company-modern" });
+    assert.match(html, /images\.unsplash\.com/);
+    assert.match(html, /VISUAL DEMO · INSPIRASI/);
+    assert.match(html, /bukan portofolio atau hasil kerja terverifikasi/);
+    assert.match(html, /Nama, caption, dan semua klaim juga harus diverifikasi/);
   });
 
   it("allows only required remote image hosts for company profile previews", () => {

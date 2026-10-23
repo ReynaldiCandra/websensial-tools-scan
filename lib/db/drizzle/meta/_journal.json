@@ -29,6 +29,13 @@
       "when": 1792590821229,
       "tag": "0003_preview_media",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792723200000,
+      "tag": "0004_preview_editor",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ExternalLink, Loader2, Wand2, Copy, CheckCheck, Eye, Sparkles, Layers3, Palette, ArrowRight, Clock3, MessageSquare, ImagePlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +37,36 @@ interface PreviewRecord {
   viewCount: number;
   createdAt: string;
 }
+
+
+type CardStyle = "modern-minimal" | "elegant-classic" | "clean" | "image-focus" | "rounded" | "glass";
+interface LandingCopy {
+  tagline: string; heroTitle: string; heroDescription: string; aboutText: string; services: string[];
+  heroButtonLabel: string; secondaryButtonLabel: string; whatsappLabel: string; footerText: string;
+  gallery: Array<{ title: string; caption: string }>;
+}
+interface EditorState {
+  tagline: string; services: string[]; aboutText: string; colorScheme: string;
+  logoUrl: string; heroImageUrl: string; galleryImageUrls: string[];
+  editorConfig: {
+    heroTitle: string; heroDescription: string; heroButtonLabel: string; secondaryButtonLabel: string;
+    whatsappLabel: string; footerText: string; accentColor: string; backgroundColor: string; textColor: string;
+    sectionVisibility: Record<string, boolean>; sectionStyles: Record<string, CardStyle>;
+    galleryItems: Array<{ title: string; caption: string; imageUrl: string }>;
+  };
+}
+interface EditorPreviewData extends EditorState {
+  id: number; token: string; businessName: string; ownerName: string | null; category: string; phone: string;
+  address: string | null; pageCategory: string; templateStyle: string; updatedAt: string;
+}
+const CARD_STYLES: Array<{ value: CardStyle; label: string; className: string; description: string }> = [
+  { value: "modern-minimal", label: "Modern Minimal", className: "bg-white", description: "Border halus dan shadow lembut" },
+  { value: "elegant-classic", label: "Elegant Classic", className: "bg-[#f4eee5]", description: "Aksen champagne dan editorial" },
+  { value: "clean", label: "Clean Card", className: "bg-slate-50", description: "Ringan dan terstruktur" },
+  { value: "image-focus", label: "Image Focus", className: "bg-gradient-to-br from-slate-300 to-slate-100", description: "Gambar menjadi fokus" },
+  { value: "rounded", label: "Rounded Card", className: "rounded-2xl bg-indigo-50", description: "Sudut ramah dan modern" },
+  { value: "glass", label: "Glassmorphism", className: "bg-gradient-to-br from-sky-100 to-violet-100", description: "Kaca ringan dengan blur" },
+];
 
 const CATEGORY_OPTIONS = [
   "Company Profile",
@@ -163,12 +195,26 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
   });
   const [templateStyle, setTemplateStyle] = useState(() => defaultTemplateFor(category));
   const supportsLogoUpload = templateStyle.startsWith("company-") || templateStyle === "corporate-finance" || templateStyle === "technology-saas" || templateStyle === "creative-agency" || templateStyle === "wellness-health" || templateStyle === "conversion-landing";
-  const supportsBusinessAssets = templateStyle === "fashion-catalog" || templateStyle === "hotel-property" || templateStyle === "tour-travel" || templateStyle === "online-course" || templateStyle === "restaurant" || (pageCategory === "Konstruksi & Renovasi" && templateStyle === "company-modern");
+  const supportsBusinessAssets = templateStyle !== "classic";
   const showAssetControls = supportsBusinessAssets || supportsLogoUpload;
   const [generating, setGenerating] = useState(false);
   const [previews, setPreviews] = useState<PreviewRecord[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [activePreview, setActivePreview] = useState<PreviewRecord | null>(null);
+  const [editor, setEditor] = useState<EditorState | null>(null);
+  const [savedEditor, setSavedEditor] = useState<EditorState | null>(null);
+  const [previewHtml, setPreviewHtml] = useState("");
+  const [viewport, setViewport] = useState<"desktop" | "mobile">("desktop");
+  const [editorLoading, setEditorLoading] = useState(false);
+  const [editorSaving, setEditorSaving] = useState(false);
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiNotes, setAiNotes] = useState("");
+  const [draftServices, setDraftServices] = useState("");
+  const [uploadingEditor, setUploadingEditor] = useState<AssetType | null>(null);
+  const [editorError, setEditorError] = useState("");
+  const dirty = Boolean(editor && savedEditor && JSON.stringify(editor) !== JSON.stringify(savedEditor));
+  const editorCurrent = useMemo(() => editor, [editor]);
 
   useEffect(() => {
     let cancelled = false;
@@ -187,6 +233,16 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
     return () => { cancelled = true; };
   }, [prospectId]);
 
+  const defaultEditorConfig = (): EditorState["editorConfig"] => ({
+    heroTitle: "", heroDescription: "", heroButtonLabel: "", secondaryButtonLabel: "", whatsappLabel: "", footerText: "",
+    accentColor: "", backgroundColor: "", textColor: "",
+    sectionVisibility: { hero: true, trust: true, categories: true, collection: true, products: true, services: true, gallery: true, about: true, cta: true, footer: true },
+    sectionStyles: { services: "modern-minimal", gallery: "image-focus", products: "rounded", testimonials: "elegant-classic" },
+    galleryItems: [],
+  });
+
+  useEffect(() => { setTagline(""); setServices(""); setAboutText(""); setAssets({ logo: "", hero: "", gallery: [] }); setPageCategory(CATEGORY_OPTIONS.includes(category) ? category : "Company Profile"); setTemplateStyle(defaultTemplateFor(category)); }, [prospectId, category]);
+
   const generate = async () => {
     setGenerating(true);
     try {
@@ -204,12 +260,14 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
           logoUrl: assets.logo || undefined,
           heroImageUrl: assets.hero || undefined,
           galleryImageUrls: assets.gallery,
+          editorConfig: defaultEditorConfig(),
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setPreviews((prev) => [data, ...prev]);
-      toast({ title: "Preview website berhasil dibuat!" });
+      await openEditor(data as PreviewRecord);
+      toast({ title: "Preview website berhasil dibuat", description: "Edit copy, gambar dan layout sebelum membagikan ke klien." });
     } catch (e: unknown) {
       toast({ title: "Gagal generate preview", description: (e as Error).message, variant: "destructive" });
     } finally {
@@ -233,6 +291,103 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
       toast({ title: "Aset berhasil diunggah", description: "Aset akan disimpan bersama preview berikutnya." });
     } catch (error) { toast({ title: "Upload aset gagal", description: error instanceof Error ? error.message : "Terjadi kesalahan saat upload.", variant: "destructive" }); }
     finally { setUploading(null); }
+  };
+
+
+  const editorUpload = async (file: File, assetType: AssetType) => {
+    if (!editor || !activePreview) return;
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/avif"];
+    if (!allowed.includes(file.type) || file.size > 10 * 1024 * 1024) { toast({ title: "Format atau ukuran file tidak didukung", description: "Gunakan JPG, PNG, WebP, atau AVIF maksimal 10 MB.", variant: "destructive" }); return; }
+    setUploadingEditor(assetType);
+    try {
+      const signedRes = await apiFetch("/api/previews/upload-signature", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prospectId, assetType }) });
+      const signed = await signedRes.json();
+      if (!signedRes.ok) throw new Error(signed.error ?? "Gagal menyiapkan upload.");
+      const form = new FormData(); form.append("file", file); form.append("api_key", signed.apiKey); form.append("timestamp", String(signed.timestamp)); form.append("folder", signed.folder); form.append("public_id", signed.publicId); form.append("overwrite", "false"); form.append("allowed_formats", signed.allowedFormats.join(",")); form.append("signature", signed.signature);
+      const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloudName)}/image/upload`, { method: "POST", body: form });
+      const upload = await response.json();
+      if (!response.ok || typeof upload.secure_url !== "string") throw new Error(upload.error?.message ?? "Upload gambar gagal.");
+      const url = upload.secure_url as string;
+      setEditor((current) => !current ? current : assetType === "logo" ? { ...current, logoUrl: url } : assetType === "hero" ? { ...current, heroImageUrl: url } : { ...current, galleryImageUrls: [...current.galleryImageUrls, url].slice(0, 3), editorConfig: { ...current.editorConfig, galleryItems: [...current.editorConfig.galleryItems, { title: "", caption: "", imageUrl: url }].slice(0, 4) } });
+      toast({ title: "Gambar siap dipakai", description: "Simpan perubahan untuk memperbarui link preview." });
+    } catch (error) { toast({ title: "Upload gambar gagal", description: error instanceof Error ? error.message : "Terjadi kesalahan.", variant: "destructive" }); }
+    finally { setUploadingEditor(null); }
+  };
+
+  const openEditor = async (record: PreviewRecord) => {
+    setEditorLoading(true); setEditorError("");
+    try {
+      const response = await apiFetch(`/api/previews/${record.id}/editor`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Gagal memuat editor.");
+      const normalized: EditorState = {
+        tagline: data.tagline ?? "", services: data.services ?? [], aboutText: data.aboutText ?? "", colorScheme: data.colorScheme ?? "ivory",
+        logoUrl: data.logoUrl ?? "", heroImageUrl: data.heroImageUrl ?? "", galleryImageUrls: data.galleryImageUrls ?? [],
+        editorConfig: { ...defaultEditorConfig(), ...(data.editorConfig ?? {}),
+          sectionVisibility: { ...defaultEditorConfig().sectionVisibility, ...(data.editorConfig?.sectionVisibility ?? {}) },
+          sectionStyles: { ...defaultEditorConfig().sectionStyles, ...(data.editorConfig?.sectionStyles ?? {}) },
+          galleryItems: (data.editorConfig?.galleryItems ?? []).map((item: { title?: string; caption?: string; imageUrl?: string }) => ({ title: item.title ?? "", caption: item.caption ?? "", imageUrl: item.imageUrl ?? "" })),
+        },
+      };
+      setActivePreview(record); setEditor(normalized); setSavedEditor(normalized);
+    } catch (error) { setEditorError(error instanceof Error ? error.message : "Editor gagal dimuat."); }
+    finally { setEditorLoading(false); }
+  };
+
+  const generateCopy = async () => {
+    setAiGenerating(true); setEditorError("");
+    try {
+      const response = await apiFetch("/api/previews/generate-copy", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prospectId, pageCategory, templateStyle, notes: aiNotes || undefined, services: draftServices || undefined }) });
+      const data = await response.json() as LandingCopy & { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "AI gagal menghasilkan copy.");
+      setTagline(data.tagline); setServices(data.services.join(", ")); setAboutText(data.aboutText); setDraftServices(data.services.join(", "));
+      if (editor) setEditor({ ...editor, tagline: data.tagline, services: data.services, aboutText: data.aboutText, editorConfig: { ...editor.editorConfig, heroTitle: data.heroTitle, heroDescription: data.heroDescription, heroButtonLabel: data.heroButtonLabel, secondaryButtonLabel: data.secondaryButtonLabel, whatsappLabel: data.whatsappLabel, footerText: data.footerText, galleryItems: data.gallery.map((item, index) => ({ ...item, imageUrl: editor.galleryImageUrls[index] ?? "" })) } });
+      toast({ title: "Draft copy AI berhasil dibuat", description: "Silakan tinjau semua konten sebelum disimpan atau dibagikan." });
+    } catch (error) { setEditorError(error instanceof Error ? error.message : "AI gagal menghasilkan copy."); }
+    finally { setAiGenerating(false); }
+  };
+
+  const payloadForEditor = () => {
+    if (!editor) throw new Error("Pilih preview yang akan diedit.");
+    return { ...editor, editorConfig: { ...editor.editorConfig, galleryItems: editor.editorConfig.galleryItems.map((item) => ({ ...item, imageUrl: item.imageUrl || undefined })) } };
+  };
+
+  const refreshLivePreview = async () => {
+    if (!activePreview || !editor) return;
+    try {
+      const response = await apiFetch(`/api/previews/${activePreview.id}/render`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payloadForEditor()) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Gagal merender preview.");
+      setPreviewHtml(data.html);
+    } catch (error) { setEditorError(error instanceof Error ? error.message : "Preview gagal dirender."); }
+  };
+
+  useEffect(() => { if (activePreview && editor) void refreshLivePreview(); }, [activePreview?.id, editor]);
+
+  const saveEditor = async () => {
+    if (!activePreview || !editor) return;
+    setEditorSaving(true); setEditorError("");
+    try {
+      const response = await apiFetch(`/api/previews/${activePreview.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payloadForEditor()) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Gagal menyimpan perubahan.");
+      setSavedEditor(editor);
+      setActivePreview((current) => current ? { ...current, token: data.token } : current);
+      toast({ title: "Perubahan tersimpan", description: "URL preview tetap sama dan sudah menampilkan versi tersimpan." });
+    } catch (error) { setEditorError(error instanceof Error ? error.message : "Gagal menyimpan perubahan."); }
+    finally { setEditorSaving(false); }
+  };
+
+  const resetEditor = () => {
+    if (!savedEditor) return;
+    setEditor(savedEditor); setEditorError("");
+  };
+
+  const editorShare = async () => {
+    if (!activePreview) return;
+    const url = `${window.location.origin}/preview/${activePreview.token}`;
+    try { await navigator.clipboard.writeText(url); toast({ title: "URL preview disalin" }); }
+    catch { toast({ title: "Tidak dapat menyalin URL", description: "Periksa izin clipboard browser.", variant: "destructive" }); }
   };
 
   const copyLink = (token: string) => {
@@ -324,7 +479,7 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
           </section>}
 
           <section className="space-y-3" aria-labelledby="generator-palette-title">
-            <div className="flex items-center gap-2"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">3</span><div><h3 id="generator-palette-title" className="text-sm font-semibold">Warna tema</h3><p className="text-[11px] text-muted-foreground">Pilih satu warna utama yang sudah didukung preview.</p></div></div>
+            <div className="flex items-center gap-2"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">{showAssetControls ? "4" : "3"}</span><div><h3 id="generator-palette-title" className="text-sm font-semibold">Warna tema</h3><p className="text-[11px] text-muted-foreground">Pilih satu warna utama yang sudah didukung preview.</p></div></div>
             {(() => {
               const recommended = PALETTE_GROUPS[pageCategory] ?? [];
               const allColors = colorsForCategory(pageCategory);
@@ -342,6 +497,35 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
         </CardContent>
       </Card>
 
+      {editor && activePreview && <section className="overflow-hidden rounded-2xl border border-[#e9e4dc] bg-[#faf9f6] shadow-sm" aria-label="Editor landing page">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e9e4dc] bg-white px-4 py-3 sm:px-5"><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[.16em] text-[#9a7b4f]">Studio editor · {activePreview.pageCategory ?? pageCategory}</p><h2 className="mt-1 truncate text-base font-semibold">Edit preview {businessName}</h2><p className="mt-1 text-[11px] text-muted-foreground">{dirty ? "Ada perubahan yang belum disimpan" : `Tersimpan ${new Date((savedEditor as EditorState & { updatedAt?: string })?.updatedAt ?? activePreview.createdAt).toLocaleString("id-ID")}`}</p></div><div className="flex flex-wrap items-center gap-2"><Button size="sm" variant="outline" onClick={resetEditor} disabled={!dirty}>Reset</Button><Button size="sm" variant="outline" onClick={() => void editorShare()}><ExternalLink className="mr-1.5 h-3.5 w-3.5"/>Bagikan</Button><Button size="sm" onClick={() => void saveEditor()} disabled={!dirty || editorSaving}>{editorSaving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin"/> : <CheckCheck className="mr-1.5 h-3.5 w-3.5"/>}Simpan Perubahan</Button></div></div>
+        <div className="grid min-w-0 gap-4 p-3 lg:grid-cols-[minmax(250px,.72fr)_minmax(0,1.6fr)_minmax(230px,.72fr)] lg:p-4">
+          <Card className="h-fit min-w-0 border-[#ebe6df] shadow-none"><CardHeader className="pb-3"><CardTitle className="text-sm">Konten website</CardTitle><CardDescription>Edit teks sebelum dikirim kepada klien.</CardDescription></CardHeader><CardContent>
+            <Tabs defaultValue="content"><TabsList className="grid h-auto w-full grid-cols-4 bg-[#f5f2ed] p-1"><TabsTrigger value="content" className="px-1.5 text-[10px]">Konten</TabsTrigger><TabsTrigger value="images" className="px-1.5 text-[10px]">Gambar</TabsTrigger><TabsTrigger value="styles" className="px-1.5 text-[10px]">Style</TabsTrigger><TabsTrigger value="sections" className="px-1.5 text-[10px]">Bagian</TabsTrigger></TabsList>
+              <TabsContent value="content" className="mt-4 space-y-3">
+                <div className="rounded-xl border border-[#eadfc9] bg-[#fbf7ee] p-3"><Label htmlFor="ai-copy-notes" className="text-xs font-semibold">Buat draft dengan AI</Label><Textarea id="ai-copy-notes" value={aiNotes} onChange={(e) => setAiNotes(e.target.value)} className="mt-2 min-h-16 bg-white text-xs" placeholder="Keunikan/kata kunci yang diketahui pemilik bisnis (opsional)"/><Button type="button" onClick={() => void generateCopy()} disabled={aiGenerating} className="mt-2 h-9 w-full gap-2 bg-[#9a7b4f] hover:bg-[#806440]">{aiGenerating ? <Loader2 className="h-4 w-4 animate-spin"/> : <Sparkles className="h-4 w-4"/>}Generate copy AI</Button><p className="mt-2 text-[10px] leading-4 text-muted-foreground">AI membuat draft dari data prospek dan input Anda. Periksa klaim/fakta sebelum publish.</p></div>
+                <div className="space-y-1.5"><Label className="text-xs">Judul Hero / Tagline</Label><Textarea value={editor.editorConfig.heroTitle || editor.tagline} onChange={(e) => setEditor({ ...editor, tagline: e.target.value, editorConfig: { ...editor.editorConfig, heroTitle: e.target.value } })} rows={2}/></div>
+                <div className="space-y-1.5"><Label className="text-xs">Deskripsi Hero</Label><Textarea value={editor.editorConfig.heroDescription || editor.aboutText} onChange={(e) => setEditor({ ...editor, aboutText: e.target.value, editorConfig: { ...editor.editorConfig, heroDescription: e.target.value } })} rows={3}/></div>
+                <div className="space-y-1.5"><Label className="text-xs">Tentang Bisnis</Label><Textarea value={editor.aboutText} onChange={(e) => setEditor({ ...editor, aboutText: e.target.value })} rows={4}/></div>
+                <div className="space-y-1.5"><Label className="text-xs">Layanan / produk (pisahkan baris baru)</Label><Textarea value={editor.services.join("\n")} onChange={(e) => setEditor({ ...editor, services: e.target.value.split("\n").slice(0, 8) })} rows={4}/></div>
+                {[ ["heroButtonLabel", "Teks CTA utama"], ["secondaryButtonLabel", "Teks tombol sekunder"], ["whatsappLabel", "Floating WhatsApp"], ["footerText", "Teks footer"] ].map(([field,label]) => <div className="space-y-1.5" key={field}><Label className="text-xs">{label}</Label><Input value={editor.editorConfig[field as keyof EditorState["editorConfig"]] as string} onChange={(e) => setEditor({ ...editor, editorConfig: { ...editor.editorConfig, [field]: e.target.value } })}/></div>)}
+              </TabsContent>
+              <TabsContent value="images" className="mt-4 space-y-3">
+                {([["logo", "Logo bisnis", editor.logoUrl], ["hero", "Gambar Hero", editor.heroImageUrl]] as const).map(([kind,label,url]) => <div className="rounded-lg border p-3" key={kind}><div className="mb-2 flex items-center justify-between"><Label className="text-xs">{label}</Label>{url && <Button size="sm" variant="ghost" onClick={() => setEditor({ ...editor, [kind === "logo" ? "logoUrl" : "heroImageUrl"]: "" })}>Hapus</Button>}</div>{url && <img className="mb-2 h-24 w-full rounded-md object-cover" src={url} alt={label}/>}<label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed p-3 text-xs text-muted-foreground"><ImagePlus className="h-4 w-4"/>Ganti gambar<input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,image/avif" onChange={(e) => { const file=e.target.files?.[0]; if(file) void editorUpload(file,kind); e.currentTarget.value=""; }}/></label></div>)}
+                {editor.galleryImageUrls.map((url,index) => <div className="flex items-center gap-2 rounded-md border p-2" key={`${url}-${index}`}><img src={url} className="h-12 w-12 rounded object-cover" alt={`Galeri ${index+1}`}/><span className="min-w-0 flex-1 truncate text-xs">Foto galeri {index+1}</span><Button size="sm" variant="ghost" onClick={() => setEditor({ ...editor, galleryImageUrls: editor.galleryImageUrls.filter((_,i)=>i!==index), editorConfig: { ...editor.editorConfig, galleryItems: editor.editorConfig.galleryItems.filter((_,i)=>i!==index) } })}>Hapus</Button></div>)}
+                <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed p-3 text-xs text-muted-foreground"><ImagePlus className="h-4 w-4"/>Tambah gambar galeri (maks. 3)<input className="sr-only" type="file" accept="image/jpeg,image/png,image/webp,image/avif" disabled={editor.galleryImageUrls.length>=3} onChange={(e)=>{const file=e.target.files?.[0]; if(file) void editorUpload(file,"gallery");e.currentTarget.value="";}}/></label>
+              </TabsContent>
+              <TabsContent value="styles" className="mt-4 space-y-4"><div className="space-y-2"><Label className="text-xs">Warna aksen</Label><Input type="color" value={editor.editorConfig.accentColor || "#9a7b4f"} onChange={(e)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, accentColor: e.target.value } })}/><Label className="text-xs">Warna latar</Label><Input type="color" value={editor.editorConfig.backgroundColor || "#faf7f0"} onChange={(e)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, backgroundColor: e.target.value } })}/><Label className="text-xs">Warna teks</Label><Input type="color" value={editor.editorConfig.textColor || "#30271f"} onChange={(e)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, textColor: e.target.value } })}/><Button variant="outline" size="sm" onClick={()=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, accentColor:"", backgroundColor:"", textColor:"" } })}>Reset warna template</Button></div><div className="space-y-2"><Label className="text-xs font-semibold">Pilih Style Card · Layanan</Label><div className="grid grid-cols-2 gap-2">{CARD_STYLES.map((style)=> <button type="button" key={style.value} aria-pressed={editor.editorConfig.sectionStyles.services===style.value} onClick={()=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, sectionStyles: { ...editor.editorConfig.sectionStyles, services: style.value } } })} className={`rounded-lg border p-2 text-left ${editor.editorConfig.sectionStyles.services===style.value ? "border-[#9a7b4f] ring-1 ring-[#9a7b4f]" : "border-border"}`}><span className={`mb-2 block h-12 border ${style.className}`}/><span className="block text-[11px] font-semibold">{style.label}</span><span className="block text-[9px] text-muted-foreground">{style.description}</span></button>)}</div><Label className="mt-3 block text-xs font-semibold">Style Card · Galeri</Label><div className="grid grid-cols-2 gap-2">{CARD_STYLES.map((style)=> <button type="button" key={style.value} aria-pressed={editor.editorConfig.sectionStyles.gallery===style.value} onClick={()=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, sectionStyles: { ...editor.editorConfig.sectionStyles, gallery: style.value } } })} className={`rounded-lg border p-2 text-left ${editor.editorConfig.sectionStyles.gallery===style.value ? "border-[#9a7b4f] ring-1 ring-[#9a7b4f]" : "border-border"}`}><span className={`mb-2 block h-12 border ${style.className}`}/><span className="block text-[11px] font-semibold">${style.label}</span></button>)}</div><Label className="mt-3 block text-xs font-semibold">Style Card · Produk</Label><Select value={editor.editorConfig.sectionStyles.products} onValueChange={(value)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, sectionStyles: { ...editor.editorConfig.sectionStyles, products: value as CardStyle } } })}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{CARD_STYLES.map((style)=><SelectItem key={style.value} value={style.value}>{style.label}</SelectItem>)}</SelectContent></Select></div></TabsContent>
+              <TabsContent value="sections" className="mt-4 space-y-3">{Object.entries(editor.editorConfig.sectionVisibility).map(([key,enabled])=><div key={key} className="flex items-center justify-between rounded-md border p-2.5"><Label className="text-xs capitalize">{key}</Label><Switch checked={enabled} onCheckedChange={(checked)=>setEditor({ ...editor, editorConfig: { ...editor.editorConfig, sectionVisibility: { ...editor.editorConfig.sectionVisibility, [key]: checked } } })}/></div>)}</TabsContent>
+            </Tabs>
+          </CardContent></Card>
+          <Card className="min-w-0 overflow-hidden border-[#ebe6df] shadow-none"><CardHeader className="flex-row items-center justify-between space-y-0 pb-3"><CardTitle className="text-sm">Live preview {dirty && <span className="ml-2 text-[10px] font-normal text-amber-700">· Belum disimpan</span>}</CardTitle><div className="flex gap-1"><Button size="sm" variant={viewport==="desktop"?"default":"outline"} onClick={()=>setViewport("desktop")}>Desktop</Button><Button size="sm" variant={viewport==="mobile"?"default":"outline"} onClick={()=>setViewport("mobile")}>Mobile</Button></div></CardHeader><CardContent className="p-2 pt-0"><div className="flex min-h-[460px] justify-center overflow-auto rounded-lg border bg-[#ece9e3] p-2"><iframe title={`Live preview ${businessName}`} srcDoc={previewHtml} sandbox="allow-forms allow-popups allow-popups-to-escape-sandbox" className={`min-h-[700px] border-0 bg-white shadow-md ${viewport==="mobile"?"w-[390px] max-w-full rounded-[28px] border-[8px] border-slate-800":"w-full"}`}/></div></CardContent></Card>
+          <Card className="h-fit min-w-0 border-[#ebe6df] shadow-none"><CardHeader className="pb-3"><CardTitle className="text-sm">Pengaturan halaman</CardTitle><CardDescription>Perubahan terlihat langsung di preview.</CardDescription></CardHeader><CardContent className="space-y-3"><div><Label className="text-xs">Kategori</Label><p className="mt-1 text-sm font-medium">{activePreview.pageCategory ?? pageCategory}</p></div><div><Label className="text-xs">Style template</Label><p className="mt-1 text-sm">{TEMPLATE_OPTIONS.find(x=>x.value===activePreview.templateStyle)?.label ?? activePreview.templateStyle}</p></div><div className="rounded-lg border p-3"><Label className="text-xs">URL preview tetap</Label><code className="mt-2 block break-all text-[10px]">{window.location.origin}/preview/{activePreview.token}</code></div><Button variant="outline" className="w-full" onClick={()=>void refreshLivePreview()}><Eye className="mr-2 h-4 w-4"/>Perbarui Live Preview</Button></CardContent></Card>
+        </div>
+      </section>}
+      {editorLoading && <div className="rounded-lg border p-4 text-xs text-muted-foreground" role="status"><Loader2 className="mr-2 inline h-4 w-4 animate-spin"/>Memuat editor preview…</div>}
+      {editorError && <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive" role="alert">{editorError}</div>}
+
       {previews.length > 0 && (
         <section className="space-y-3" aria-labelledby="preview-history-title">
           <div className="flex flex-wrap items-end justify-between gap-2"><div><p className="ws-eyebrow">Hasil tersimpan</p><h2 id="preview-history-title" className="mt-1 text-base font-semibold">Riwayat preview</h2></div><Badge variant="secondary" className="rounded-full">{previews.length} preview</Badge></div>
@@ -355,7 +539,7 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
                   <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="max-w-full break-words text-sm font-semibold">{preview.pageCategory ?? businessName}</h3><Badge variant="outline" className="max-w-full truncate text-[10px]">{template}</Badge></div><div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground"><span className="inline-flex items-center gap-1"><Clock3 className="h-3 w-3" />{new Date(preview.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</span><span className="inline-flex items-center gap-1"><Eye className="h-3 w-3" />{preview.viewCount} kunjungan</span><span className="inline-flex items-center gap-1"><Palette className="h-3 w-3" />{color?.label ?? preview.colorScheme}</span></div><code className="mt-1 block max-w-full truncate font-mono text-[10px] text-muted-foreground">{window.location.origin}/preview/{preview.token}</code></div>
                 </div>
                 <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:flex-wrap lg:w-auto lg:shrink-0">
-                  <Button size="sm" className="h-9 gap-1.5 rounded-lg" onClick={() => openPreview(preview.token)}><ExternalLink className="h-3.5 w-3.5" />Buka Preview</Button>
+                  <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-lg" onClick={() => void openEditor(preview)}><Wand2 className="h-3.5 w-3.5"/>Edit</Button><Button size="sm" className="h-9 gap-1.5 rounded-lg" onClick={() => openPreview(preview.token)}><ExternalLink className="h-3.5 w-3.5" />Buka Preview</Button>
                   <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-lg" onClick={() => copyLink(preview.token)}>{copied === preview.token ? <CheckCheck className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}{copied === preview.token ? "Tersalin" : "Salin Link"}</Button>
                   <Button size="sm" variant="outline" className="col-span-2 h-9 gap-1.5 rounded-lg border-emerald-200 text-emerald-700 hover:bg-emerald-50 sm:col-span-1" onClick={() => waShare(preview.token)}><MessageSquare className="h-3.5 w-3.5" />Kirim WhatsApp</Button>
                 </div>

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { toWaNumber } from "../lib/phone";
 import { getCloudinaryConfig, signCloudinaryParams } from "../lib/cloudinary-upload";
 import { renderConstructionProfileHTML, renderFashionCatalogHTML, renderIndustryLandingHTML, renderPremiumProfileHTML, type PreviewPageData, type PreviewTemplateStyle } from "../lib/preview-html";
+import { generateLandingCopy } from "../lib/landing-copy";
 
 const router = Router();
 /** Public prospect demo link. Must be answerable without auth. */
@@ -33,6 +34,24 @@ export function escapeHtml(value: string): string {
     }
   }).replace(/[\u0000-\u001f\u007f-\u009f]/g, " ");
 }
+
+const CARD_STYLES = ["modern-minimal", "elegant-classic", "clean", "image-focus", "rounded", "glass"] as const;
+const EditorConfigSchema = z.object({
+  heroTitle: z.string().trim().max(120).optional(), heroDescription: z.string().trim().max(420).optional(),
+  heroButtonLabel: z.string().trim().max(28).optional(), secondaryButtonLabel: z.string().trim().max(28).optional(),
+  whatsappLabel: z.string().trim().max(28).optional(), footerText: z.string().trim().max(180).optional(),
+  accentColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), backgroundColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), textColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  sectionVisibility: z.record(z.string().max(40), z.boolean()).optional(),
+  sectionStyles: z.record(z.string().max(40), z.enum(CARD_STYLES)).optional(),
+  galleryItems: z.array(z.object({ title: z.string().trim().max(55), caption: z.string().trim().max(120), imageUrl: z.string().url().optional() })).max(4).optional(),
+});
+const EditPreviewBody = z.object({
+  tagline: z.string().trim().min(1).max(100), services: z.array(z.string().trim().min(1).max(100)).max(8),
+  aboutText: z.string().trim().max(1200), colorScheme: z.string().trim().min(1).max(40),
+  logoUrl: z.string().url().nullable(), heroImageUrl: z.string().url().nullable(),
+  galleryImageUrls: z.array(z.string().url()).max(3), editorConfig: EditorConfigSchema,
+});
+
 
 const TEMPLATE_STYLES = [
   "classic",
@@ -62,7 +81,10 @@ const CreatePreviewBody = z.object({
   logoUrl: z.string().url().optional().nullable(),
   heroImageUrl: z.string().url().optional().nullable(),
   galleryImageUrls: z.array(z.string().url()).max(3).optional(),
+  editorConfig: EditorConfigSchema.optional(),
 });
+
+
 
 const COLOR_SCHEMES: Record<string, { primary: string; bg: string; accent: string; text: string; light: string }> = {
   indigo: { primary: "#4f46e5", bg: "#eef2ff", accent: "#6366f1", text: "#1e1b4b", light: "#e0e7ff" },
@@ -480,7 +502,7 @@ router.post("/previews", async (req, res) => {
     const finalServices = services || getDefaultServices(pageCategory);
     const finalAbout = aboutText || getDefaultAbout(prospect.businessName, pageCategory);
     const finalColor = colorScheme || "indigo";
-    const mediaUrls = [parsed.data.logoUrl, parsed.data.heroImageUrl, ...(parsed.data.galleryImageUrls ?? [])].filter((url): url is string => Boolean(url));
+    const mediaUrls = [parsed.data.logoUrl, parsed.data.heroImageUrl, ...(parsed.data.galleryImageUrls ?? []), ...(parsed.data.editorConfig?.galleryItems ?? []).map((item) => item.imageUrl)].filter((url): url is string => Boolean(url));
     if (mediaUrls.some((value) => { try { const url = new URL(value); return url.protocol !== "https:" || url.hostname !== "res.cloudinary.com" || Boolean(url.username || url.password); } catch { return true; } })) {
       return res.status(400).json({ error: "Media URL tidak valid; gunakan aset Cloudinary yang diunggah melalui generator." });
     }
@@ -505,6 +527,7 @@ router.post("/previews", async (req, res) => {
         logoUrl: parsed.data.logoUrl ?? null,
         heroImageUrl: parsed.data.heroImageUrl ?? null,
         galleryImageUrls: JSON.stringify(parsed.data.galleryImageUrls ?? []),
+        editorConfig: parsed.data.editorConfig ?? {},
       })
       .returning();
 
@@ -517,10 +540,87 @@ router.post("/previews", async (req, res) => {
       colorScheme: row.colorScheme,
       viewCount: row.viewCount,
       createdAt: row.createdAt.toISOString(),
+      editorConfig: row.editorConfig,
+      tagline: row.tagline,
+      services: (row.services ?? "").split(",").filter(Boolean),
+      aboutText: row.aboutText,
+      logoUrl: row.logoUrl,
+      heroImageUrl: row.heroImageUrl,
+      galleryImageUrls: JSON.parse(row.galleryImageUrls ?? "[]") as string[],
     });
   } catch (err) {
     req.log.error({ err }, "Failed to create preview");
     return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Generate structured Indonesian copy from prospect facts. API key remains server-side.
+router.post("/previews/generate-copy", async (req, res) => {
+  const parsed = z.object({ prospectId: z.number().int().positive(), pageCategory: z.string().trim().min(1).max(80), templateStyle: z.enum(TEMPLATE_STYLES), notes: z.string().trim().max(700).optional(), services: z.string().trim().max(480).optional() }).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+  try {
+    const [prospect] = await db.select().from(prospectsTable).where(eq(prospectsTable.id, parsed.data.prospectId));
+    if (!prospect) return res.status(404).json({ error: "Prospek tidak ditemukan." });
+    const copy = await generateLandingCopy({ businessName: prospect.businessName, businessCategory: prospect.category, pageCategory: parsed.data.pageCategory, templateStyle: parsed.data.templateStyle, address: prospect.address, notes: parsed.data.notes, services: parsed.data.services });
+    return res.json(copy);
+  } catch (error) {
+    req.log.warn({ err: error }, "Landing page copy generation failed");
+    return res.status(502).json({ error: error instanceof Error ? error.message : "Gagal membuat konten AI." });
+  }
+});
+
+// Save edits to the existing preview, preserving its public token.
+router.put("/previews/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "ID preview tidak valid." });
+  const parsed = EditPreviewBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+  const urls = [parsed.data.logoUrl, parsed.data.heroImageUrl, ...parsed.data.galleryImageUrls, ...(parsed.data.editorConfig.galleryItems ?? []).map((item) => item.imageUrl ?? null)].filter((value): value is string => Boolean(value));
+  if (urls.some((value) => { try { const url = new URL(value); return url.protocol !== "https:" || url.hostname !== "res.cloudinary.com" || Boolean(url.username || url.password); } catch { return true; } })) return res.status(400).json({ error: "Media URL tidak valid; gunakan gambar yang diunggah ke Cloudinary." });
+  try {
+    const [updated] = await db.update(previewsTable).set({ tagline: parsed.data.tagline, services: parsed.data.services.join(","), aboutText: parsed.data.aboutText, colorScheme: parsed.data.colorScheme, logoUrl: parsed.data.logoUrl, heroImageUrl: parsed.data.heroImageUrl, galleryImageUrls: JSON.stringify(parsed.data.galleryImageUrls), editorConfig: parsed.data.editorConfig, updatedAt: new Date() }).where(eq(previewsTable.id, id)).returning({ id: previewsTable.id, token: previewsTable.token, updatedAt: previewsTable.updatedAt });
+    if (!updated) return res.status(404).json({ error: "Preview tidak ditemukan." });
+    return res.json({ ...updated, previewUrl: `/preview/${updated.token}` });
+  } catch (error) {
+    req.log.error({ err: error }, "Failed to save landing page preview");
+    return res.status(500).json({ error: "Perubahan preview gagal disimpan." });
+  }
+});
+
+router.get("/previews/:id/editor", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "ID preview tidak valid." });
+  try {
+    const [row] = await db.select().from(previewsTable).where(eq(previewsTable.id, id));
+    if (!row) return res.status(404).json({ error: "Preview tidak ditemukan." });
+    return res.json({ id: row.id, token: row.token, businessName: row.businessName, ownerName: row.ownerName, category: row.category, phone: row.phone, address: row.address, pageCategory: row.pageCategory, templateStyle: row.templateStyle, colorScheme: row.colorScheme, tagline: row.tagline, services: (row.services ?? "").split(",").filter(Boolean), aboutText: row.aboutText, logoUrl: row.logoUrl, heroImageUrl: row.heroImageUrl, galleryImageUrls: JSON.parse(row.galleryImageUrls ?? "[]") as string[], editorConfig: row.editorConfig ?? {}, updatedAt: row.updatedAt.toISOString() });
+  } catch (error) {
+    req.log.error({ err: error }, "Failed to load landing page editor");
+    return res.status(500).json({ error: "Editor preview gagal dimuat." });
+  }
+});
+
+// Render unsaved editor state through the real template for immediate preview.
+router.post("/previews/:id/render", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: "ID preview tidak valid." });
+  const parsed = EditPreviewBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.message });
+  try {
+    const [row] = await db.select().from(previewsTable).where(eq(previewsTable.id, id));
+    if (!row) return res.status(404).json({ error: "Preview tidak ditemukan." });
+    const html = generatePreviewHTML({
+      businessName: row.businessName, ownerName: row.ownerName, category: row.category,
+      pageCategory: row.pageCategory, phone: row.phone, address: row.address,
+      tagline: parsed.data.tagline, services: parsed.data.services, aboutText: parsed.data.aboutText,
+      colorScheme: parsed.data.colorScheme, templateStyle: row.templateStyle as PreviewTemplateStyle,
+      logoUrl: parsed.data.logoUrl, heroImageUrl: parsed.data.heroImageUrl,
+      galleryImageUrls: parsed.data.galleryImageUrls, editorConfig: parsed.data.editorConfig,
+    });
+    return res.json({ html });
+  } catch (error) {
+    req.log.error({ err: error }, "Failed to render unsaved preview changes");
+    return res.status(500).json({ error: "Preview tidak dapat dirender." });
   }
 });
 
@@ -598,6 +698,7 @@ publicPreviewsRouter.get("/preview/:token", async (req, res) => {
       logoUrl: row.logoUrl,
       heroImageUrl: row.heroImageUrl,
       galleryImageUrls: JSON.parse(row.galleryImageUrls ?? "[]") as string[],
+      editorConfig: row.editorConfig ?? {},
       colorScheme: row.colorScheme,
       templateStyle: row.templateStyle as PreviewTemplateStyle,
     });

@@ -1,5 +1,22 @@
-import { pgTable, text, serial, integer, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { prospectsTable } from "./prospects";
+
+export type PreviewCardStyle = "modern-minimal" | "elegant-classic" | "clean" | "image-focus" | "rounded" | "glass";
+
+export interface PreviewEditorConfig {
+  heroTitle?: string;
+  heroDescription?: string;
+  heroButtonLabel?: string;
+  secondaryButtonLabel?: string;
+  whatsappLabel?: string;
+  footerText?: string;
+  accentColor?: string;
+  backgroundColor?: string;
+  textColor?: string;
+  sectionVisibility?: Record<string, boolean>;
+  sectionStyles?: Record<string, PreviewCardStyle>;
+  galleryItems?: Array<{ title: string; caption: string; imageUrl?: string }>;
+}
 
 export const previewsTable = pgTable("previews", {
   id: serial("id").primaryKey(),
@@ -19,6 +36,8 @@ export const previewsTable = pgTable("previews", {
   logoUrl: text("logo_url"),
   heroImageUrl: text("hero_image_url"),
   galleryImageUrls: text("gallery_image_urls"),
+  editorConfig: jsonb("editor_config").$type<PreviewEditorConfig>().notNull().default({}),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
   isActive: boolean("is_active").notNull().default(true),
   viewCount: integer("view_count").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),

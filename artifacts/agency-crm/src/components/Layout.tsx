@@ -186,12 +186,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="flex h-[100dvh] min-h-0 w-full overflow-hidden bg-background">
+    <div className="flex min-h-[100dvh] w-full bg-background">
       <aside className={`sticky top-0 hidden h-[100dvh] shrink-0 flex-col border-r border-border bg-white transition-[width] duration-200 md:flex ${sidebarCollapsed ? "w-[4.5rem]" : "w-[15rem]"}`}>
         <SidebarContent />
       </aside>
 
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <main className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-20 flex h-[68px] shrink-0 items-center justify-between gap-3 border-b border-border bg-white px-4 md:px-6">
           <div className="flex items-center gap-3 min-w-0">
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
@@ -254,8 +254,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6 lg:px-8 lg:py-7">
-          <div className="mx-auto w-full max-w-[1440px]">
+        <div className="flex-1 p-4 md:p-6 lg:px-8 lg:py-7">
+          <div className={location === "/landing-page-generator" ? "w-full" : "mx-auto w-full max-w-[1440px]"}>
             {children}
           </div>
         </div>

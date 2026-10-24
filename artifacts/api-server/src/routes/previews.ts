@@ -516,7 +516,7 @@ router.post("/previews/upload-signature", (req, res) => {
   const timestamp = Math.floor(Date.now() / 1000);
   const folder = `websensial/previews/${parsed.data.prospectId}`;
   const signedParams = cloudinaryUploadSignatureParams(timestamp, folder);
-  return res.json({ cloudName: config.cloudName, apiKey: config.apiKey, timestamp, folder, signature: signCloudinaryParams(signedParams, config.apiSecret), allowedFormats: signedParams.allowed_formats.split(","), maxFileBytes: 10 * 1024 * 1024 });
+  return res.json({ cloudName: config.cloudName, apiKey: config.apiKey, timestamp, folder, signature: signCloudinaryParams(signedParams, config.apiSecret), maxFileBytes: 10 * 1024 * 1024 });
 });
 
 // POST /api/previews — create a preview

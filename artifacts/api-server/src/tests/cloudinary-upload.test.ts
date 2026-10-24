@@ -11,10 +11,11 @@ describe("Cloudinary upload signing", () => {
     const expected = crypto.createHash("sha1").update("folder=websensial/previews/3&timestamp=1710000000secret").digest("hex");
     assert.equal(signCloudinaryParams(params, "secret"), expected);
   });
-  it("signs the same fixed parameters that the browser uploads", () => {
+  it("signs only parameters supported by Cloudinary's signed browser upload", () => {
     const params = cloudinaryUploadSignatureParams(1710000000, "websensial/previews/3");
-    assert.deepEqual(params, { allowed_formats: "jpg,png,webp,avif", folder: "websensial/previews/3", timestamp: 1710000000 });
-    assert.equal(signCloudinaryParams(params, "secret"), crypto.createHash("sha1").update("allowed_formats=jpg,png,webp,avif&folder=websensial/previews/3&timestamp=1710000000secret").digest("hex"));
+    assert.deepEqual(params, { folder: "websensial/previews/3", timestamp: 1710000000 });
+    assert.equal(signCloudinaryParams(params, "secret"), crypto.createHash("sha1").update("folder=websensial/previews/3&timestamp=1710000000secret").digest("hex"));
+    assert.equal("allowed_formats" in params, false);
     assert.equal("public_id" in params, false);
     assert.equal("overwrite" in params, false);
   });
@@ -52,8 +53,7 @@ describe("Cloudinary signed-upload endpoint", () => {
     assert.equal(response.body.folder, "websensial/previews/12");
     assert.equal(response.body.timestamp > 0, true);
     assert.equal(signCloudinaryParams(cloudinaryUploadSignatureParams(response.body.timestamp, response.body.folder), "demo-api-secret"), response.body.signature);
-    assert.deepEqual(Object.keys(response.body).sort(), ["allowedFormats", "apiKey", "cloudName", "folder", "maxFileBytes", "signature", "timestamp"].sort());
-    assert.deepEqual(response.body.allowedFormats, ["jpg", "png", "webp", "avif"]);
+    assert.deepEqual(Object.keys(response.body).sort(), ["apiKey", "cloudName", "folder", "maxFileBytes", "signature", "timestamp"].sort());
     assert.match(response.body.signature, /^[a-f0-9]{40}$/);
     assert.equal(JSON.stringify(response.body).includes("demo-api-secret"), false);
     assert.equal(response.body.maxFileBytes, 10 * 1024 * 1024);

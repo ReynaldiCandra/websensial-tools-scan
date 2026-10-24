@@ -36,8 +36,53 @@ function cloudinaryUploadMessage(payload: unknown): string {
   const error = "error" in payload ? payload.error : undefined;
   const message = error && typeof error === "object" && "message" in error && typeof error.message === "string" ? error.message : "";
   if (/invalid signature/i.test(message)) return "Tanda tangan upload Cloudinary tidak cocok. Coba lagi; jika berulang, periksa konfigurasi CLOUDINARY di server.";
+  if (/api key|unknown api key|authorization required/i.test(message)) return "Cloudinary menolak API key. Periksa CLOUDINARY_API_KEY dan pastikan cocok dengan cloud name di konfigurasi server.";
+  if (/cloud name/i.test(message)) return "Nama cloud Cloudinary tidak valid. Periksa CLOUDINARY_CLOUD_NAME di konfigurasi server.";
   if (!message) return "Cloudinary gagal mengunggah gambar. Silakan coba kembali.";
   return message.length > 180 ? `${message.slice(0, 177)}…` : message;
+}
+
+async function uploadImageToCloudinary(file: File, prospectId: number, assetType: AssetType): Promise<string> {
+  const signatureResponse = await apiFetch("/api/previews/upload-signature", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prospectId, assetType }),
+  });
+  const signed = await signatureResponse.json().catch(() => null) as {
+    cloudName?: string; apiKey?: string; timestamp?: number; folder?: string;
+    signature?: string; maxFileBytes?: number; error?: string;
+  } | null;
+  if (!signatureResponse.ok) {
+    const message = signed?.error ?? "Gagal menyiapkan upload.";
+    if (signatureResponse.status === 503) {
+      throw new Error("Upload belum dikonfigurasi. Tambahkan CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, dan CLOUDINARY_API_SECRET pada environment server/deployment.");
+    }
+    throw new Error(message);
+  }
+  if (!signed?.cloudName || !signed.apiKey || !signed.timestamp || !signed.folder || !signed.signature) {
+    throw new Error("Server memberikan data upload yang tidak lengkap. Periksa deployment API.");
+  }
+  if (file.size > (signed.maxFileBytes ?? 10 * 1024 * 1024)) {
+    throw new Error("Ukuran gambar melewati batas 10 MB.");
+  }
+
+  const form = new FormData();
+  form.append("file", file);
+  form.append("api_key", signed.apiKey);
+  form.append("timestamp", String(signed.timestamp));
+  form.append("folder", signed.folder);
+  form.append("signature", signed.signature);
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloudName)}/image/upload`, {
+    method: "POST",
+    body: form,
+  });
+  const uploaded = await response.json().catch(() => null) as {
+    secure_url?: unknown; error?: { message?: string };
+  } | null;
+  if (!response.ok || typeof uploaded?.secure_url !== "string") {
+    throw new Error(cloudinaryUploadMessage(uploaded));
+  }
+  return uploaded.secure_url;
 }
 
 interface PreviewRecord {
@@ -142,23 +187,25 @@ const TEMPLATE_OPTIONS = [
 ];
 
 const PALETTE_PAIR_GROUPS: Record<string, Array<[string, string]>> = {
-  "Company Profile": [["ivory", "taupe"], ["beige", "brown"], ["black", "ivory"]],
-  "Konstruksi & Renovasi": [["navy", "beige"], ["charcoal", "ivory"], ["slate", "soft-blue"]],
-  "Hotel / Property": [["navy", "beige"], ["ivory", "taupe"], ["charcoal", "soft-blue"]],
-  "Tour & Travel": [["soft-blue", "navy"], ["sage-green", "ivory"], ["navy", "amber"]],
-  "Online Course": [["indigo", "soft-blue"], ["navy", "amber"], ["charcoal", "neon-accent"]],
-  "Restoran": [["brown", "ivory"], ["sage-green", "beige"], ["charcoal", "amber"]],
-  "Fashion": [["ivory", "taupe"], ["black", "beige"], ["soft-rose", "brown"]],
-  "Fashion & Luxury": [["ivory", "taupe"], ["black", "beige"], ["soft-rose", "brown"]],
-  "Corporate, Hukum, & Keuangan": [["white", "navy"], ["ivory", "charcoal"], ["navy", "soft-blue"]],
-  "Teknologi & SaaS": [["charcoal", "soft-blue"], ["dark-slate", "neon-accent"], ["navy", "ivory"]],
-  "Portofolio Kreatif & Agensi": [["black", "neon-accent"], ["charcoal", "soft-rose"], ["ivory", "violet"]],
-  "Wellness, Skincare, & Kesehatan": [["ivory", "sage-green"], ["soft-rose", "taupe"], ["beige", "brown"]],
-  "Landing Page High Konversi": [["navy", "soft-blue"], ["white", "indigo"], ["charcoal", "neon-accent"]],
-  "Landing Page High Konversi (Iklan Meta & Google Ads)": [["navy", "soft-blue"], ["white", "indigo"], ["charcoal", "neon-accent"]],
+  "Company Profile": [["ivory", "taupe"], ["beige", "brown"], ["black", "ivory"], ["white", "navy"], ["sage-green", "ivory"], ["soft-rose", "brown"], ["slate", "amber"], ["violet", "beige"]],
+  "Konstruksi & Renovasi": [["navy", "beige"], ["charcoal", "ivory"], ["slate", "soft-blue"], ["white", "navy"], ["brown", "beige"], ["dark-slate", "amber"], ["black", "neon-accent"], ["sage-green", "ivory"]],
+  "Hotel / Property": [["navy", "beige"], ["ivory", "taupe"], ["charcoal", "soft-blue"], ["black", "beige"], ["sage-green", "ivory"], ["white", "brown"], ["violet", "taupe"], ["soft-rose", "ivory"]],
+  "Tour & Travel": [["soft-blue", "navy"], ["sage-green", "ivory"], ["navy", "amber"], ["soft-rose", "beige"], ["emerald", "ivory"], ["white", "soft-blue"], ["violet", "amber"], ["charcoal", "neon-accent"]],
+  "Online Course": [["indigo", "soft-blue"], ["navy", "amber"], ["charcoal", "neon-accent"], ["white", "violet"], ["emerald", "ivory"], ["slate", "soft-rose"], ["dark-slate", "amber"], ["black", "soft-blue"]],
+  "Restoran": [["brown", "ivory"], ["sage-green", "beige"], ["charcoal", "amber"], ["soft-rose", "brown"], ["black", "beige"], ["emerald", "ivory"], ["navy", "soft-blue"], ["violet", "amber"]],
+  "Fashion": [["ivory", "taupe"], ["black", "beige"], ["soft-rose", "brown"], ["white", "slate"], ["violet", "ivory"], ["sage-green", "beige"], ["charcoal", "amber"], ["navy", "soft-rose"]],
+  "Fashion & Luxury": [["ivory", "taupe"], ["black", "beige"], ["soft-rose", "brown"], ["white", "slate"], ["violet", "ivory"], ["sage-green", "beige"], ["charcoal", "amber"], ["navy", "soft-rose"]],
+  "Corporate, Hukum, & Keuangan": [["white", "navy"], ["ivory", "charcoal"], ["navy", "soft-blue"], ["slate", "white"], ["dark-slate", "amber"], ["sage-green", "ivory"], ["black", "beige"], ["indigo", "white"]],
+  "Teknologi & SaaS": [["charcoal", "soft-blue"], ["dark-slate", "neon-accent"], ["navy", "ivory"], ["black", "violet"], ["white", "indigo"], ["slate", "emerald"], ["charcoal", "amber"], ["soft-blue", "dark-slate"]],
+  "Portofolio Kreatif & Agensi": [["black", "neon-accent"], ["charcoal", "soft-rose"], ["ivory", "violet"], ["white", "indigo"], ["navy", "amber"], ["emerald", "ivory"], ["slate", "soft-blue"], ["brown", "soft-rose"]],
+  "Wellness, Skincare, & Kesehatan": [["ivory", "sage-green"], ["soft-rose", "taupe"], ["beige", "brown"], ["white", "emerald"], ["ivory", "soft-blue"], ["violet", "soft-rose"], ["navy", "sage-green"], ["charcoal", "amber"]],
+  "Landing Page High Konversi": [["navy", "soft-blue"], ["white", "indigo"], ["charcoal", "neon-accent"], ["emerald", "ivory"], ["black", "amber"], ["violet", "white"], ["soft-rose", "navy"], ["slate", "amber"]],
+  "Landing Page High Konversi (Iklan Meta & Google Ads)": [["navy", "soft-blue"], ["white", "indigo"], ["charcoal", "neon-accent"], ["emerald", "ivory"], ["black", "amber"], ["violet", "white"], ["soft-rose", "navy"], ["slate", "amber"]],
 };
 
-const colorPairsForCategory = (pageCategory: string) => PALETTE_PAIR_GROUPS[pageCategory] ?? [["navy", "soft-blue"], ["ivory", "sage-green"], ["charcoal", "amber"]] as Array<[string, string]>;
+const UNIVERSAL_PALETTE_PAIRS: Array<[string, string]> = [["navy", "soft-blue"], ["ivory", "sage-green"], ["charcoal", "amber"], ["beige", "brown"], ["black", "soft-rose"], ["white", "violet"], ["indigo", "amber"], ["slate", "emerald"], ["dark-slate", "neon-accent"]];
+
+const colorPairsForCategory = (pageCategory: string) => PALETTE_PAIR_GROUPS[pageCategory] ?? UNIVERSAL_PALETTE_PAIRS;
 
 const PREVIEW_PALETTES: Record<string, { primary: string; accent: string; background: string; text: string }> = {
   ivory: { primary: "#8a6e50", accent: "#c0a77d", background: "#faf7f0", text: "#30271f" }, beige: { primary: "#987856", accent: "#c2a887", background: "#f4eee5", text: "#392f25" },
@@ -394,14 +441,8 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
     if (!allowed.includes(file.type) || file.size > 10 * 1024 * 1024) { toast({ title: "Format atau ukuran file tidak didukung", description: "Gunakan JPG, PNG, WebP, atau AVIF maksimal 10 MB.", variant: "destructive" }); return; }
     setUploading(assetType);
     try {
-      const signResponse = await apiFetch("/api/previews/upload-signature", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prospectId, assetType }) });
-      const signed = await signResponse.json();
-      if (!signResponse.ok) throw new Error(signed.error ?? "Gagal menyiapkan upload.");
-      const form = new FormData(); form.append("file", file); form.append("api_key", signed.apiKey); form.append("timestamp", String(signed.timestamp)); form.append("folder", signed.folder); form.append("allowed_formats", signed.allowedFormats.join(",")); form.append("signature", signed.signature);
-      const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloudName)}/image/upload`, { method: "POST", body: form });
-      const uploaded = await response.json().catch(() => null);
-      if (!response.ok || typeof uploaded.secure_url !== "string") throw new Error(cloudinaryUploadMessage(uploaded));
-      setAssets((previous) => assetType === "gallery" ? { ...previous, gallery: [...previous.gallery, uploaded.secure_url].slice(0, 3) } : { ...previous, [assetType]: uploaded.secure_url });
+      const url = await uploadImageToCloudinary(file, prospectId, assetType);
+      setAssets((previous) => assetType === "gallery" ? { ...previous, gallery: [...previous.gallery, url].slice(0, 3) } : { ...previous, [assetType]: url });
       toast({ title: "Aset berhasil diunggah", description: "Aset akan disimpan bersama preview berikutnya." });
     } catch (error) { toast({ title: "Upload aset gagal", description: error instanceof Error ? error.message : "Terjadi kesalahan saat upload.", variant: "destructive" }); }
     finally { setUploading(null); }
@@ -414,14 +455,7 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
     if (!allowed.includes(file.type) || file.size > 10 * 1024 * 1024) { toast({ title: "Format atau ukuran file tidak didukung", description: "Gunakan JPG, PNG, WebP, atau AVIF maksimal 10 MB.", variant: "destructive" }); return; }
     setUploadingEditor(assetType);
     try {
-      const signedRes = await apiFetch("/api/previews/upload-signature", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prospectId, assetType }) });
-      const signed = await signedRes.json();
-      if (!signedRes.ok) throw new Error(signed.error ?? "Gagal menyiapkan upload.");
-      const form = new FormData(); form.append("file", file); form.append("api_key", signed.apiKey); form.append("timestamp", String(signed.timestamp)); form.append("folder", signed.folder); form.append("allowed_formats", signed.allowedFormats.join(",")); form.append("signature", signed.signature);
-      const response = await fetch(`https://api.cloudinary.com/v1_1/${encodeURIComponent(signed.cloudName)}/image/upload`, { method: "POST", body: form });
-      const upload = await response.json().catch(() => null);
-      if (!response.ok || typeof upload.secure_url !== "string") throw new Error(cloudinaryUploadMessage(upload));
-      const url = upload.secure_url as string;
+      const url = await uploadImageToCloudinary(file, prospectId, assetType);
       setEditor((current) => !current ? current : assetType === "logo" ? { ...current, logoUrl: url } : assetType === "hero" ? { ...current, heroImageUrl: url } : { ...current, galleryImageUrls: [...current.galleryImageUrls, url].slice(0, 3), editorConfig: { ...current.editorConfig, galleryItems: [...current.editorConfig.galleryItems, { title: "", caption: "", imageUrl: url }].slice(0, 4) } });
       toast({ title: "Gambar siap dipakai", description: "Simpan perubahan untuk memperbarui link preview." });
     } catch (error) { toast({ title: "Upload gambar gagal", description: error instanceof Error ? error.message : "Terjadi kesalahan.", variant: "destructive" }); }
@@ -645,7 +679,7 @@ export function PreviewGenerator({ prospectId, businessName, category, phone }: 
 
           <section className="space-y-3" aria-labelledby="generator-palette-title">
             <div className="flex items-center gap-2"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary">{showAssetControls ? "4" : "3"}</span><div><h3 id="generator-palette-title" className="text-sm font-semibold">Pasangan warna rekomendasi</h3><p className="text-[11px] text-muted-foreground">Setiap pilihan memakai 2 warna utama yang dipasangkan khusus untuk kategori ini; latar dan teks otomatis dijaga agar kontras.</p></div></div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">{colorPairsForCategory(pageCategory).map(([baseColor, pairColor]) => {
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">{colorPairsForCategory(pageCategory).map(([baseColor, pairColor]) => {
               const base = COLOR_OPTIONS.find((option) => option.value === baseColor)!;
               const paired = COLOR_OPTIONS.find((option) => option.value === pairColor)!;
               const selected = colorScheme === baseColor && accentScheme === pairColor;

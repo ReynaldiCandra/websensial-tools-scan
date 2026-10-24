@@ -15,7 +15,9 @@ export function signCloudinaryParams(params: Record<string, string | number>, ap
 }
 
 export function cloudinaryUploadSignatureParams(timestamp: number, folder: string) {
-  return { allowed_formats: "jpg,png,webp,avif", folder, timestamp };
+  // Only include parameters supported by the signed Upload API. allowed_formats
+  // is configured on an upload preset, not sent as a direct upload parameter.
+  return { folder, timestamp };
 }
 
 export function isCloudinaryImageUrl(value: string): boolean {

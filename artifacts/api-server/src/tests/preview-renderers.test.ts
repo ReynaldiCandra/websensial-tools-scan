@@ -44,6 +44,10 @@ describe("preview landing page renderers", () => {
       const html = renderIndustryLandingHTML({ ...base, pageCategory: industry }, industry);
       assert.match(html, eyebrow); assert.match(html, contact); assert.match(html, /VISUAL DEMO/);
       assert.match(html, /@media\(max-width:760px\)/); assert.match(html, /wa\.me\/6281234567890/);
+      assert.ok(html.indexOf('id="pengalaman"') < html.indexOf('id="layanan"'));
+      assert.ok(html.indexOf('id="layanan"') < html.indexOf('id="pilihan"'));
+      assert.ok(html.indexOf('id="pilihan"') < html.indexOf('id="langkah"'));
+      assert.ok(html.indexOf('id="langkah"') < html.indexOf('id="kontak"'));
       assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/i);
     }
   });
@@ -126,6 +130,22 @@ describe("preview landing page renderers", () => {
       assert.match(html, /@media\(max-width:700px\)/);
       assert.match(html, /wa\.me\/6281234567890/);
       assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/i);
+    }
+  });
+
+  it("keeps one working floating WhatsApp action on every generated template", () => {
+    const templates = [
+      generatePreviewHTML(base),
+      generatePreviewHTML({ ...base, templateStyle: "fashion-catalog" }),
+      generatePreviewHTML({ ...base, category: "Konstruksi & Renovasi", pageCategory: "Konstruksi & Renovasi", templateStyle: "company-modern" }),
+      ...(["company-modern", "company-elegant", "company-minimal", "corporate-finance", "technology-saas", "creative-agency", "wellness-health", "conversion-landing"] as const).map((templateStyle) => generatePreviewHTML({ ...base, templateStyle })),
+      ...(["hotel-property", "tour-travel", "online-course", "restaurant"] as const).map((templateStyle) => generatePreviewHTML({ ...base, templateStyle })),
+    ];
+
+    for (const html of templates) {
+      const floatingActions = html.match(/class="floating-(?:contact|whatsapp)"/g) ?? [];
+      assert.equal(floatingActions.length, 1);
+      assert.match(html, /class="floating-(?:contact|whatsapp)".*?href="https:\/\/wa\.me\/6281234567890/);
     }
   });
 

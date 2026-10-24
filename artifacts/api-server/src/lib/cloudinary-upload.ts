@@ -1,4 +1,4 @@
-import { v2 as cloudinary } from "cloudinary";
+import { createHash } from "node:crypto";
 
 export interface CloudinaryConfig { cloudName: string; apiKey: string; apiSecret: string }
 
@@ -10,7 +10,14 @@ export function getCloudinaryConfig(env: NodeJS.ProcessEnv = process.env): Cloud
 }
 
 export function signCloudinaryParams(params: Record<string, string | number>, apiSecret: string): string {
-  return cloudinary.utils.api_sign_request(params, apiSecret);
+  // Upload API signatures use SHA-1 over the sorted, unescaped parameter string.
+  // Sign directly so unrelated SDK process configuration cannot change the digest.
+  const canonical = Object.entries(params)
+    .filter(([, value]) => value !== "" && value !== undefined && value !== null)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${key}=${value}`)
+    .join("&");
+  return createHash("sha1").update(canonical + apiSecret).digest("hex");
 }
 
 export function cloudinaryUploadSignatureParams(timestamp: number, folder: string) {

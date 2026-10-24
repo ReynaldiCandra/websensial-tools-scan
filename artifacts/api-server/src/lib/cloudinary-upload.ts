@@ -1,4 +1,4 @@
-import crypto from "node:crypto";
+import { v2 as cloudinary } from "cloudinary";
 
 export interface CloudinaryConfig { cloudName: string; apiKey: string; apiSecret: string }
 
@@ -10,8 +10,7 @@ export function getCloudinaryConfig(env: NodeJS.ProcessEnv = process.env): Cloud
 }
 
 export function signCloudinaryParams(params: Record<string, string | number>, apiSecret: string): string {
-  const canonical = Object.entries(params).filter(([, value]) => value !== "" && value !== undefined && value !== null).sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => `${key}=${value}`).join("&");
-  return crypto.createHash("sha1").update(canonical + apiSecret).digest("hex");
+  return cloudinary.utils.api_sign_request(params, apiSecret);
 }
 
 export function cloudinaryUploadSignatureParams(timestamp: number, folder: string) {

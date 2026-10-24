@@ -1,20 +1,19 @@
 import assert from "node:assert/strict";
-import crypto from "node:crypto";
+import { v2 as cloudinary } from "cloudinary";
 import { before, describe, it } from "node:test";
 import type { Express } from "express";
 import request from "supertest";
 import { cloudinaryUploadSignatureParams, getCloudinaryConfig, isCloudinaryImageUrl, signCloudinaryParams } from "../lib/cloudinary-upload";
 
 describe("Cloudinary upload signing", () => {
-  it("signs canonical sorted upload parameters", () => {
+  it("matches the Cloudinary SDK signature for canonical upload parameters", () => {
     const params = { folder: "websensial/previews/3", timestamp: 1710000000 };
-    const expected = crypto.createHash("sha1").update("folder=websensial/previews/3&timestamp=1710000000secret").digest("hex");
-    assert.equal(signCloudinaryParams(params, "secret"), expected);
+    assert.equal(signCloudinaryParams(params, "secret"), cloudinary.utils.api_sign_request(params, "secret"));
   });
   it("signs only parameters supported by Cloudinary's signed browser upload", () => {
     const params = cloudinaryUploadSignatureParams(1710000000, "websensial/previews/3");
     assert.deepEqual(params, { folder: "websensial/previews/3", timestamp: 1710000000 });
-    assert.equal(signCloudinaryParams(params, "secret"), crypto.createHash("sha1").update("folder=websensial/previews/3&timestamp=1710000000secret").digest("hex"));
+    assert.equal(signCloudinaryParams(params, "secret"), cloudinary.utils.api_sign_request(params, "secret"));
     assert.equal("allowed_formats" in params, false);
     assert.equal("public_id" in params, false);
     assert.equal("overwrite" in params, false);
@@ -52,7 +51,9 @@ describe("Cloudinary signed-upload endpoint", () => {
     assert.equal(response.body.apiKey, "demo-api-key");
     assert.equal(response.body.folder, "websensial/previews/12");
     assert.equal(response.body.timestamp > 0, true);
-    assert.equal(signCloudinaryParams(cloudinaryUploadSignatureParams(response.body.timestamp, response.body.folder), "demo-api-secret"), response.body.signature);
+    const signedParams = cloudinaryUploadSignatureParams(response.body.timestamp, response.body.folder);
+    assert.equal(signCloudinaryParams(signedParams, "demo-api-secret"), response.body.signature);
+    assert.equal(response.body.signature, cloudinary.utils.api_sign_request(signedParams, "demo-api-secret"));
     assert.deepEqual(Object.keys(response.body).sort(), ["apiKey", "cloudName", "folder", "maxFileBytes", "signature", "timestamp"].sort());
     assert.match(response.body.signature, /^[a-f0-9]{40}$/);
     assert.equal(JSON.stringify(response.body).includes("demo-api-secret"), false);
